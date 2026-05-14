@@ -83,62 +83,97 @@ Core modules:
 - When `API_KEY` is set in `.env`, mutating and analytics routes under `/api/*` require `Authorization: Bearer <API_KEY>` or `X-API-Key: <API_KEY>` (the `/health` route stays open for probes).
 - Governance catalog, mapping registry, and audit entries are **in-memory** in this repo version; persist them to PostgreSQL or MongoDB for multi-instance production.
 
-## API Documentation
+## API documentation
 
-You can import these sample requests into Postman or run them directly via curl.
+| Artifact | Description |
+|----------|-------------|
+| **Swagger UI** | Open [http://localhost:3000/docs](http://localhost:3000/docs) while the server is running. Interactive “Try it out” for all documented routes. No API key required for `/docs` or `/openapi.json`. |
+| **OpenAPI 3.0** | Machine-readable spec: [openapi/openapi.json](openapi/openapi.json) — also served at `GET /openapi.json`. |
+| **Postman** | Import [postman_collection.json](postman_collection.json) (Collection v2.1). Set variables `baseUrl` (e.g. `http://localhost:3000`) and `apiKey` when the server has `API_KEY` set. |
 
-Base URL:
-- `http://localhost:3000`
+Regenerate the OpenAPI file and Postman collection from the route list (after adding or renaming endpoints):
 
-### Health
 ```bash
-curl --location "http://localhost:3000/health"
+npm run docs:generate
 ```
 
-### Postgres connection health
+### Authentication
+
+When `API_KEY` is set, protected routes need `Authorization: Bearer <API_KEY>` or `X-API-Key: <API_KEY>`. In Swagger UI, use **Authorize** and enter your key as a Bearer token (or add the header manually). `/health`, `/docs`, `/openapi.json`, and the static dashboard are not API-key gated.
+
+### curl examples (quick start)
+
+Base URL: `http://localhost:3000`
+
+**Health**
+
 ```bash
-curl --location "http://localhost:3000/api/db/postgres/health"
+curl -s "http://localhost:3000/health"
 ```
 
-### MySQL schema
-```bash
-curl --location "http://localhost:3000/api/db/mysql/schema"
+**Response**
+
+```json
+{ "ok": true }
 ```
 
-### MongoDB schema
+**Postgres health**
+
 ```bash
-curl --location "http://localhost:3000/api/db/mongodb/schema"
+curl -s "http://localhost:3000/api/db/postgres/health"
 ```
 
-### S3 files listing
+**API ingest (example)**
+
 ```bash
-curl --location "http://localhost:3000/api/s3/files?bucket=<bucket-name>&prefix=<folder>&maxKeys=100"
+curl -s -X POST "http://localhost:3000/api/ingest/api" \
+  -H "Content-Type: application/json" \
+  -d "{\"url\":\"https://jsonplaceholder.typicode.com/posts\",\"method\":\"GET\"}"
 ```
 
-### API ingestion
-```bash
-curl --location "http://localhost:3000/api/ingest/api" \
---header "Content-Type: application/json" \
---data "{
-  \"url\": \"https://jsonplaceholder.typicode.com/posts\",
-  \"method\": \"GET\"
-}"
+**Example success shape** (truncated)
+
+```json
+{
+  "recordCount": 100,
+  "metadata": { "sourceType": "api", "entityName": "api-response" },
+  "sample": []
+}
 ```
 
-### Postgres table preview
+**Discovery scan**
+
 ```bash
-curl --location "http://localhost:3000/api/ingest/postgres/table/preview" \
---header "Content-Type: application/json" \
---data "{
-  \"tableName\": \"users\",
-  \"limit\": 20
-}"
+curl -s -X POST "http://localhost:3000/api/discovery/scan" \
+  -H "Content-Type: application/json" \
+  -d "{\"records\":[{\"email\":\"user@example.com\"}],\"sourceType\":\"file\",\"sourceName\":\"demo\",\"entityName\":\"batch-1\"}"
 ```
 
-### Ingestion history
+**Audit logs**
+
 ```bash
-curl --location "http://localhost:3000/api/history"
+curl -s "http://localhost:3000/api/audit/logs?limit=10"
 ```
+
+**Example response**
+
+```json
+{
+  "count": 1,
+  "items": [
+    {
+      "id": "…",
+      "timestamp": "2026-05-15T12:00:00.000Z",
+      "source": "api:discovery/scan",
+      "action": "discovery_scan",
+      "status": "success",
+      "durationMs": 42
+    }
+  ]
+}
+```
+
+For every path, request body schema, and response patterns, use **Swagger UI** or **openapi/openapi.json**.
 
 ### Optional discovery on ingest
 
@@ -146,18 +181,21 @@ For `POST /api/ingest/api`, `POST /api/ingest/file/preview`, `POST /api/ingest/s
 
 ---
 
-## Privacy intelligence APIs (Week 2)
+## Privacy intelligence APIs (Week 2) — route index
 
 Unless `API_KEY` is unset, add a header: `Authorization: Bearer <your API_KEY>` or `X-API-Key: <your API_KEY>`.
 
 ### Discovery
+
 - `POST /api/discovery/scan` — body: `{ "records": [ {...} ], "sourceType": "database|file|api|cloud", "sourceName", "entityName", "classify": true?, "batchSize"?: number }`
 - `GET /api/discovery/categories` — supported sensitive categories
 
 ### Classification
+
 - `POST /api/classification/classify` — body: `{ "discovery": <DiscoveryScanResult> }`
 
 ### Mapping and lineage
+
 - `POST /api/mapping/datasets` — register dataset/system ids (aligns with discovery trace)
 - `POST /api/mapping/from-scan` — body: `{ "discovery", "classification"? }`
 - `POST /api/mapping/flows` — declare replication / backup / API exposure between datasets
@@ -166,26 +204,24 @@ Unless `API_KEY` is unset, add a header: `Authorization: Bearer <your API_KEY>` 
 - `GET /api/mapping/duplicates`, `/mapping/export`
 
 ### Profiling, risk, catalog
+
 - `POST /api/profiling/profile` — body: `{ "discovery", "classification"?, "records"?, "persist"?: true, "profilingOptions"?, "exposureHints"? }` — returns `profile`, `risk`, and optional `catalog` when `persist: true`
 - `POST /api/catalog/register` — persist snapshot to in-memory catalog
 - `GET /api/catalog/datasets`
 
 ### Search
+
 - `GET /api/search/datasets` — query: `riskLevel`, `classification`, `sourceType`, `sourceName`, `detectionType` / `detectionCategory`, `mappedOnly`, `page`, `pageSize`
 - `GET /api/search/mapped-fields` — query: `datasetId`, `sensitiveCategory`, pagination
 - `GET /api/search/duplicate-sensitive` — cross-source duplicate semantics
 
 ### Dashboard
-- `GET /api/dashboard/summary` — aggregates for UI/analytics (no raw sensitive payloads)
+
+- `GET /api/dashboard/analytics` — full payload for the UI
+- `GET /api/dashboard/summary` — aggregates
+- Additional metrics: `/api/dashboard/metrics/*` (see OpenAPI)
 
 ### Audit
+
 - `GET /api/audit/logs` — query: `limit`, `action`, `status`, `sourcePrefix`
 
-### Deployment notes (assignment checklist)
-
-- **Vercel**: this service is a long-running Express app. For Vercel you typically wrap the app in a serverless entry (for example `@vercel/node`) or deploy to **Railway**, **Render**, **Fly.io**, or a VM where `npm run build && npm start` is supported. Set `ENFORCE_HTTPS=true` behind a TLS-terminating proxy.
-- **Submission extras** (not stored in git): live deployment URL, demo login if applicable, demo video link, and public GitHub URL — add these to your submission package or README when you have them.
-
-### Formal OpenAPI
-
-There is no generated `openapi.yaml` in this repository yet; this README lists the routes above. You can import them into Postman or generate OpenAPI from route comments in a follow-up.

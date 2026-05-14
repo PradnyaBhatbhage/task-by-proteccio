@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Governance dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="layout">
+      <header class="header">
+        <div class="header__brand">
+          <h1>Governance dashboard</h1>
+          <p class="muted">Aggregates from <code>/api/dashboard/analytics</code></p>
+        </div>
+        <div class="header__actions">
+          <label class="field">
+            <span class="field__label">API key</span>
+            <input
+              id="apiKey"
+              type="password"
+              autocomplete="off"
+              placeholder="Required when API_KEY is set"
+              class="input"
+            />
+          </label>
+          <button type="button" id="btnSaveKey" class="btn btn--ghost">Remember</button>
+          <button type="button" id="btnRefresh" class="btn btn--primary">Refresh</button>
+        </div>
+      </header>
+
+      <div id="banner" class="banner banner--hidden" role="status"></div>
+
+      <section class="meta muted" id="generatedAt"></section>
+
+      <section class="grid grid--kpis" id="kpis"></section>
+
+      <section class="panel">
+        <h2>Risk distribution</h2>
+        <p class="muted small">Datasets in catalog by assessed risk level</p>
+        <div class="chart-wrap"><canvas id="chartRisk" height="220"></canvas></div>
+      </section>
+
+      <div class="grid grid--2">
+        <section class="panel">
+          <h2>Classification (catalog)</h2>
+          <p class="muted small">Label totals from governance catalog</p>
+          <div class="chart-wrap"><canvas id="chartClassCatalog" height="260"></canvas></div>
+        </section>
+        <section class="panel">
+          <h2>Classification (mapped fields)</h2>
+          <p class="muted small">Privacy labels on mapped sensitive fields</p>
+          <div class="chart-wrap"><canvas id="chartClassMapped" height="260"></canvas></div>
+        </section>
+      </div>
+
+      <div class="grid grid--2">
+        <section class="panel">
+          <h2>Discovery — catalog</h2>
+          <p class="muted small">Sum of detection counts by category</p>
+          <div class="chart-wrap"><canvas id="chartDiscCatalog" height="280"></canvas></div>
+        </section>
+        <section class="panel">
+          <h2>Discovery — mapping inventory</h2>
+          <p class="muted small">Mapped field rows by sensitive category</p>
+          <div class="chart-wrap"><canvas id="chartDiscMapped" height="280"></canvas></div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <h2>Mapping & lineage</h2>
+        <div class="grid grid--mapping" id="mappingCards"></div>
+        <h3 class="subhead">Data flows by kind</h3>
+        <div class="chart-wrap chart-wrap--wide"><canvas id="chartFlows" height="200"></canvas></div>
+      </section>
+
+      <section class="panel">
+        <h2>Profiling</h2>
+        <div class="grid grid--profiling" id="profilingCards"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Source breakdown</h2>
+        <div class="table-wrap">
+          <table class="table" id="sourceTable">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Datasets</th>
+                <th>Scanned records</th>
+                <th>Sensitive records</th>
+                <th>Max risk</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

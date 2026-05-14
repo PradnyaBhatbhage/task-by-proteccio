@@ -11,6 +11,13 @@ import { parseUploadedFilePreview } from "../services/file-parse.service";
 import { MySQLConnector } from "../connectors/mysql.connector";
 import { MongoDBConnector } from "../connectors/mongodb.connector";
 import { assertSafeIdentifier } from "../utils/identifiers";
+import { scanRecords } from "../discovery";
+
+function includeDiscoveryFromBody(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const d = (body as Record<string, unknown>).discovery;
+  return d === true || d === "true" || d === 1 || d === "1";
+}
 
 const router = Router();
 
@@ -168,7 +175,19 @@ router.post("/ingest/api", async (req, res, next) => {
         recordCount: normalized.length,
         createdDate: new Date()
       });
-      res.json({ recordCount: normalized.length, metadata, sample: normalized.slice(0, 5) });
+      const payload: Record<string, unknown> = {
+        recordCount: normalized.length,
+        metadata,
+        sample: normalized.slice(0, 5)
+      };
+      if (includeDiscoveryFromBody(req.body)) {
+        payload.discovery = scanRecords(normalized, {
+          sourceType: "api",
+          sourceName: String(req.body.url ?? "api"),
+          entityName: "api-response"
+        });
+      }
+      res.json(payload);
     });
     if (job.status !== "success") {
       return res.status(500).json(job);
@@ -203,13 +222,22 @@ router.post("/ingest/file/preview", uploadMiddleware.single("file"), async (req,
       createdDate: new Date()
     });
 
-    res.json({
+    const body = req.body as Record<string, unknown>;
+    const out: Record<string, unknown> = {
       fileId: req.file.filename,
       parser: parsed.parser,
       warnings: parsed.warnings,
       metadata,
       preview: normalized.slice(0, 20)
-    });
+    };
+    if (includeDiscoveryFromBody(body)) {
+      out.discovery = scanRecords(normalized, {
+        sourceType: "file",
+        sourceName: "internal-upload",
+        entityName: req.file.originalname
+      });
+    }
+    res.json(out);
   } catch (err) {
     next(err);
   }
@@ -247,12 +275,20 @@ router.post("/ingest/s3/preview", async (req, res, next) => {
           : undefined
       });
 
-      res.json({
+      const payload: Record<string, unknown> = {
         parser: parsed.parser,
         recordCount: normalized.length,
         metadata,
         sample: normalized.slice(0, 20)
-      });
+      };
+      if (includeDiscoveryFromBody(req.body)) {
+        payload.discovery = scanRecords(normalized, {
+          sourceType: "cloud",
+          sourceName: bucket,
+          entityName: key
+        });
+      }
+      res.json(payload);
     });
     if (job.status !== "success") {
       return res.status(500).json(job);
@@ -285,7 +321,15 @@ router.post("/ingest/postgres/table/preview", async (req, res, next) => {
         recordCount: normalized.length,
         createdDate: new Date()
       });
-      res.json({ preview: normalized, metadata });
+      const payload: Record<string, unknown> = { preview: normalized, metadata };
+      if (includeDiscoveryFromBody(req.body)) {
+        payload.discovery = scanRecords(normalized, {
+          sourceType: "database",
+          sourceName: tableName,
+          entityName: schemaName ? `${schemaName}.${tableName}` : tableName
+        });
+      }
+      res.json(payload);
     });
 
     if (job.status !== "success") return res.status(500).json(job);

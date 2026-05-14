@@ -6,8 +6,6 @@ import { PostgresConnector } from "./connectors/postgres.connector";
 import { normalizeRecords } from "./services/normalizer";
 import { buildMetadata } from "./services/metadata";
 
-export default app;
-
 const runningOnVercel = Boolean(process.env.VERCEL);
 
 if (!runningOnVercel) {
@@ -57,3 +55,6 @@ if (!runningOnVercel) {
     logger.info(`Dashboard UI: http://localhost:${env.PORT}/dashboard/`);
   });
 }
+
+/** CommonJS default so hosts that `require()` this file get the Express app directly (e.g. Vercel). */
+export = app;

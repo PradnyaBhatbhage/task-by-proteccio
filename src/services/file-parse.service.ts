@@ -3,7 +3,6 @@ import path from "node:path";
 import readline from "node:readline";
 import { parse as parseCsv } from "csv-parse";
 import * as XLSX from "xlsx";
-import { PDFParse } from "pdf-parse";
 import { createUtf8ValidatedTextStream } from "../utils/utf8";
 
 const DEFAULT_MAX_RECORDS = 100;
@@ -124,6 +123,7 @@ function parseXlsxFile(filePath: string, maxRecords: number): Record<string, unk
 }
 
 async function parsePdfFile(filePath: string, maxRecords: number): Promise<Record<string, unknown>[]> {
+  const { PDFParse } = await import("pdf-parse");
   const fileBuffer = fs.readFileSync(filePath);
   const parser = new PDFParse({ data: fileBuffer });
   const data = await parser.getText();

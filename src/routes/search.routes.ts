@@ -1,11 +1,20 @@
 import { Router } from "express";
 import { z } from "zod";
 import { auditTrail } from "../audit";
-import { governanceCatalog } from "../catalog";
 import type { ClassificationLabel } from "../classification/types";
 import type { SensitiveCategory, SourceType } from "../discovery";
 import { mappingRegistry } from "../mapping";
 import type { RiskLevel } from "../risk";
+import {
+  parseDatasetSearchQuery,
+  parseGlobalSearchQuery,
+  parseLineageSearchQuery,
+  parseRemediationSearchQuery,
+  searchDatasets,
+  searchGlobal,
+  searchLineage,
+  searchRemediation
+} from "../search";
 
 const router = Router();
 
@@ -61,47 +70,107 @@ function parseClassificationLabel(raw: unknown): ClassificationLabel | undefined
   return ALL_LABELS.includes(s as ClassificationLabel) ? (s as ClassificationLabel) : undefined;
 }
 
-/**
- * GET /api/search/datasets
- * Query: riskLevel, classification, sourceType, sourceNameContains, detectionCategory, mappedOnly, page, pageSize
- */
-router.get("/search/datasets", (req, res) => {
-  const started = Date.now();
-  const pageRaw = req.query.page !== undefined ? Number(req.query.page) : 1;
-  const pageSizeRaw = req.query.pageSize !== undefined ? Number(req.query.pageSize) : 25;
-  const pageParsed = z.number().int().positive().safeParse(pageRaw);
-  const pageSizeParsed = z.number().int().positive().max(200).safeParse(pageSizeRaw);
-
-  const q = {
-    riskLevel: parseRiskLevel(req.query.riskLevel),
-    classificationLabel: parseClassificationLabel(req.query.classification),
-    sourceType: parseSourceType(req.query.sourceType),
-    sourceNameContains: req.query.sourceName ? String(req.query.sourceName) : undefined,
-    detectionCategory: parseCategory(req.query.detectionType ?? req.query.detectionCategory),
-    mappedOnly: req.query.mappedOnly === "true" || req.query.mappedOnly === "1",
-    page: pageParsed.success ? pageParsed.data : 1,
-    pageSize: pageSizeParsed.success ? pageSizeParsed.data : 25
-  };
-
-  const result = governanceCatalog.query(q);
-
+function auditSearch(
+  source: string,
+  started: number,
+  meta: Record<string, unknown>
+): void {
   auditTrail.append({
-    source: "api:search/datasets",
+    source,
     action: "search_query",
     status: "success",
     durationMs: Date.now() - started,
-    metadata: {
-      total: result.total,
-      page: result.page,
-      pageSize: result.pageSize,
-      filters: {
-        riskLevel: q.riskLevel,
-        classification: q.classificationLabel,
-        sourceType: q.sourceType,
-        mappedOnly: q.mappedOnly,
-        hasDetectionCategory: Boolean(q.detectionCategory)
-      }
+    metadata: meta
+  });
+}
+
+/**
+ * GET /api/search/datasets
+ * Filters: risk, compliance, remediation linkage, multi-label/category (AND/OR), keyword, sort, cursor pagination.
+ */
+router.get("/search/datasets", (req, res) => {
+  const started = Date.now();
+  const q = parseDatasetSearchQuery(req);
+  const result = searchDatasets(q);
+
+  auditSearch("api:search/datasets", started, {
+    total: result.total,
+    page: result.page,
+    pageSize: result.pageSize,
+    hasMore: result.hasMore,
+    sortBy: result.sortBy,
+    filters: {
+      riskLevel: q.riskLevel,
+      riskLevels: q.riskLevels,
+      complianceRegulation: q.complianceRegulation,
+      complianceViolation: q.complianceViolation,
+      hasUnresolvedRemediation: q.hasUnresolvedRemediation,
+      keyword: Boolean(q.keyword),
+      classificationCount: q.classificationLabels?.length ?? (q.classificationLabel ? 1 : 0),
+      detectionCount: q.detectionCategories?.length ?? (q.detectionCategory ? 1 : 0)
     }
+  });
+
+  return res.json(result);
+});
+
+/**
+ * GET /api/search/global
+ * Cross-entity keyword search (datasets, fields, remediation, lineage, sources).
+ */
+router.get("/search/global", (req, res) => {
+  const started = Date.now();
+  const q = parseGlobalSearchQuery(req);
+  if (!q) {
+    return res.status(400).json({ error: "Query parameter q or keyword is required" });
+  }
+
+  const result = searchGlobal(q);
+  auditSearch("api:search/global", started, {
+    query: q.keyword,
+    types: q.types,
+    datasets: result.datasets.total,
+    fields: result.fields.total,
+    remediation: result.remediation.total
+  });
+
+  return res.json(result);
+});
+
+/**
+ * GET /api/search/lineage
+ * Source lineage queries by dataset/system, flow kind, direction, related source name.
+ */
+router.get("/search/lineage", (req, res) => {
+  const started = Date.now();
+  const q = parseLineageSearchQuery(req);
+  const result = searchLineage(q);
+
+  auditSearch("api:search/lineage", started, {
+    total: result.total,
+    page: result.page,
+    datasetId: q.datasetId,
+    systemId: q.systemId,
+    direction: q.direction
+  });
+
+  return res.json(result);
+});
+
+/**
+ * GET /api/search/remediation
+ * Remediation-focused search with unresolved filter and cursor pagination.
+ */
+router.get("/search/remediation", (req, res) => {
+  const started = Date.now();
+  const q = parseRemediationSearchQuery(req);
+  const result = searchRemediation(q);
+
+  auditSearch("api:search/remediation", started, {
+    total: result.total,
+    page: result.page,
+    unresolved: q.unresolved,
+    status: q.status
   });
 
   return res.json(result);
@@ -115,25 +184,38 @@ router.get("/search/mapped-fields", (req, res) => {
   const started = Date.now();
   const datasetId = req.query.datasetId !== undefined ? String(req.query.datasetId) : undefined;
   const sensitiveCategory = parseCategory(req.query.sensitiveCategory ?? req.query.detectionType);
+  const keyword = req.query.q ? String(req.query.q) : req.query.keyword ? String(req.query.keyword) : undefined;
   const pageRaw = req.query.page !== undefined ? Number(req.query.page) : 1;
   const pageSizeRaw = req.query.pageSize !== undefined ? Number(req.query.pageSize) : 50;
   const page = z.number().int().positive().safeParse(pageRaw).success ? Number(pageRaw) : 1;
   const pageSize = Math.min(200, Math.max(1, z.number().int().positive().safeParse(pageSizeRaw).success ? Number(pageSizeRaw) : 50));
 
-  const all = mappingRegistry.listFields({ datasetId, sensitiveCategory });
+  let all = mappingRegistry.listFields({ datasetId, sensitiveCategory });
+  if (keyword) {
+    const needle = keyword.toLowerCase();
+    all = all.filter(
+      (f) =>
+        f.logicalFieldKey.toLowerCase().includes(needle) ||
+        f.jsonPath.toLowerCase().includes(needle) ||
+        f.sensitiveCategory.toLowerCase().includes(needle) ||
+        f.datasetId.toLowerCase().includes(needle)
+    );
+  }
+
   const total = all.length;
   const start = (page - 1) * pageSize;
   const fields = all.slice(start, start + pageSize);
 
-  auditTrail.append({
-    source: "api:search/mapped-fields",
-    action: "search_query",
-    status: "success",
-    durationMs: Date.now() - started,
-    metadata: { total, page, pageSize, datasetIdProvided: Boolean(datasetId), categoryFilter: Boolean(sensitiveCategory) }
+  auditSearch("api:search/mapped-fields", started, {
+    total,
+    page,
+    pageSize,
+    datasetIdProvided: Boolean(datasetId),
+    categoryFilter: Boolean(sensitiveCategory),
+    keyword: Boolean(keyword)
   });
 
-  return res.json({ items: fields, total, page, pageSize });
+  return res.json({ items: fields, total, page, pageSize, hasMore: start + pageSize < total });
 });
 
 /**
@@ -162,15 +244,15 @@ router.get("/search/duplicate-sensitive", (req, res) => {
   const start = (page - 1) * pageSize;
   const items = groups.slice(start, start + pageSize);
 
-  auditTrail.append({
-    source: "api:search/duplicate-sensitive",
-    action: "search_query",
-    status: "success",
-    durationMs: Date.now() - started,
-    metadata: { total, page, pageSize, minDatasets, categoryFilter: Boolean(sensitiveCategory) }
+  auditSearch("api:search/duplicate-sensitive", started, {
+    total,
+    page,
+    pageSize,
+    minDatasets,
+    categoryFilter: Boolean(sensitiveCategory)
   });
 
-  return res.json({ items, total, page, pageSize });
+  return res.json({ items, total, page, pageSize, hasMore: start + pageSize < total });
 });
 
 export default router;

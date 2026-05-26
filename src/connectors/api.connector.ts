@@ -1,5 +1,6 @@
-import axios, { AxiosRequestHeaders, Method } from "axios";
+import axios, { type AxiosRequestHeaders, type Method } from "axios";
 import { withRetry } from "../utils/retry";
+import { assertPublicHttpsUrl } from "../utils/ssrf";
 
 interface ApiIngestInput {
   url: string;
@@ -11,12 +12,30 @@ interface ApiIngestInput {
   maxPages?: number;
 }
 
-export async function ingestFromApi(input: ApiIngestInput): Promise<unknown[]> {
-  if (!input.url.startsWith("https://")) {
-    throw new Error("Only HTTPS endpoints are allowed.");
+const BLOCKED_OUTBOUND_HEADERS = new Set([
+  "authorization",
+  "cookie",
+  "x-api-key",
+  "proxy-authorization",
+  "x-forwarded-for",
+  "x-real-ip"
+]);
+
+function sanitizeOutboundHeaders(headers?: AxiosRequestHeaders): AxiosRequestHeaders | undefined {
+  if (!headers || typeof headers !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (BLOCKED_OUTBOUND_HEADERS.has(key.toLowerCase())) continue;
+    if (typeof value === "string") out[key] = value;
   }
+  return Object.keys(out).length > 0 ? (out as AxiosRequestHeaders) : undefined;
+}
+
+export async function ingestFromApi(input: ApiIngestInput): Promise<unknown[]> {
+  assertPublicHttpsUrl(input.url);
 
   const method: Method = input.method ?? "GET";
+  const headers = sanitizeOutboundHeaders(input.headers);
   const pageParam = input.pageParam ?? "page";
   let page = input.startPage ?? 1;
   const maxPages = input.maxPages ?? 10;
@@ -28,7 +47,7 @@ export async function ingestFromApi(input: ApiIngestInput): Promise<unknown[]> {
         axios.request({
           url: input.url,
           method,
-          headers: input.headers,
+          headers,
           data: input.body,
           params: { [pageParam]: page },
           timeout: 10000

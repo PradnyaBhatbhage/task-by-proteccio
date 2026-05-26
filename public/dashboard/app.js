@@ -1,13 +1,69 @@
 /* global Chart */
 
-const STORAGE_KEY = "dashboardApiKey";
+const API_KEY_STORAGE_KEY = "dashboardApiKey";
+const TOKEN_STORAGE_KEY = "dashboardJwt";
+const USER_STORAGE_KEY = "dashboardUserEmail";
 
 /** @type {Record<string, Chart>} */
 const charts = {};
 
 function getApiKey() {
   const input = document.getElementById("apiKey");
-  return (input && input.value.trim()) || sessionStorage.getItem(STORAGE_KEY) || "";
+  return (input && input.value.trim()) || sessionStorage.getItem(API_KEY_STORAGE_KEY) || "";
+}
+
+function getJwtToken() {
+  return sessionStorage.getItem(TOKEN_STORAGE_KEY) || "";
+}
+
+function authHeaders() {
+  const token = getJwtToken();
+  const key = getApiKey();
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  else if (key) headers["X-API-Key"] = key;
+  return headers;
+}
+
+function setLoginState(email) {
+  const loginEmail = document.getElementById("loginEmail");
+  if (loginEmail && email) loginEmail.value = email;
+}
+
+async function login() {
+  setBanner("", "");
+  const email = document.getElementById("loginEmail")?.value.trim() || "viewer@local";
+  const password = document.getElementById("loginPassword")?.value || "Viewer1!";
+
+  let res;
+  try {
+    res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+  } catch (e) {
+    setBanner("error", `Login network error: ${e && e.message ? e.message : "failed to fetch"}`);
+    return;
+  }
+
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    setBanner("error", `Login failed (${res.status}): ${body.message || body.error || "check credentials"}`);
+    return;
+  }
+
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, body.token);
+  sessionStorage.setItem(USER_STORAGE_KEY, body.user?.email || email);
+  setLoginState(body.user?.email || email);
+  setBanner("ok", `Logged in as ${body.user?.email || email}. Loading dashboard...`);
+  await loadDashboard();
+}
+
+function logout() {
+  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  sessionStorage.removeItem(USER_STORAGE_KEY);
+  setBanner("ok", "Logged out. Login again or use API key fallback.");
 }
 
 function setBanner(kind, message) {
@@ -243,9 +299,7 @@ function recordChartFromRecord(rec, canvasId, label, colorHue) {
 
 async function loadDashboard() {
   setBanner("", "");
-  const key = getApiKey();
-  const headers = {};
-  if (key) headers["X-API-Key"] = key;
+  const headers = authHeaders();
 
   let res;
   try {
@@ -258,7 +312,7 @@ async function loadDashboard() {
   if (res.status === 401) {
     setBanner(
       "error",
-      "Unauthorized (401). Enter the same API key as in your server .env (API_KEY), then click Refresh."
+      "Unauthorized (401). Login with viewer@local / Viewer1! or paste a valid API key, then click Refresh."
     );
     return;
   }
@@ -312,15 +366,24 @@ async function loadDashboard() {
 }
 
 function init() {
-  const saved = sessionStorage.getItem(STORAGE_KEY);
+  const saved = sessionStorage.getItem(API_KEY_STORAGE_KEY);
   const input = document.getElementById("apiKey");
   if (input && saved) input.value = saved;
+  setLoginState(sessionStorage.getItem(USER_STORAGE_KEY) || "viewer@local");
+  const pass = document.getElementById("loginPassword");
+  if (pass && !pass.value) pass.value = "Viewer1!";
 
+  document.getElementById("btnLogin")?.addEventListener("click", () => {
+    void login();
+  });
+  document.getElementById("btnLogout")?.addEventListener("click", () => {
+    logout();
+  });
   document.getElementById("btnRefresh")?.addEventListener("click", () => loadDashboard());
   document.getElementById("btnSaveKey")?.addEventListener("click", () => {
     const v = document.getElementById("apiKey")?.value.trim() || "";
-    if (v) sessionStorage.setItem(STORAGE_KEY, v);
-    else sessionStorage.removeItem(STORAGE_KEY);
+    if (v) sessionStorage.setItem(API_KEY_STORAGE_KEY, v);
+    else sessionStorage.removeItem(API_KEY_STORAGE_KEY);
     setBanner("ok", v ? "API key saved in this browser session." : "Cleared saved API key.");
   });
 

@@ -1,78 +1,37 @@
-import type { DiscoveryScanResult, SensitiveCategory, SourceType } from "../discovery";
 import type { ClassificationScanResult } from "../classification/types";
-import type { RiskAssessment, RiskExposureHints, RiskLevel } from "./types";
+import type { DiscoveryScanResult } from "../discovery";
+import type { ProfilingReport } from "../profiling";
+import { mappingRegistry, stableDatasetId, stableSystemId } from "../mapping";
+import { computeComplianceIntelligence } from "./compliance";
+import { comboCriticalFromDiscovery, RISK_FACTOR_COMPUTERS, type FactorContext } from "./factors";
+import { detectOverexposedRecords } from "./overexposure";
+import type {
+  PrivacyRiskAnalysis,
+  RiskAssessment,
+  RiskExposureHints,
+  RiskFactorContribution,
+  RiskFactorId,
+  RiskLevel,
+  RiskScoringWeights
+} from "./types";
+import { DEFAULT_RISK_WEIGHTS as DEFAULT_WEIGHTS } from "./types";
 
-const CATEGORY_WEIGHT: Record<SensitiveCategory, number> = {
-  aadhaar: 42,
-  passport: 38,
-  pan: 34,
-  payment_card: 40,
-  bank_account: 36,
-  authentication_field: 44,
-  person_name: 18,
-  address: 20,
-  date_of_birth: 22,
-  email: 16,
-  phone: 18,
-  ip_address: 12
-};
-
-const GOV_IDS: SensitiveCategory[] = ["aadhaar", "pan", "passport"];
-const FINANCIAL: SensitiveCategory[] = ["payment_card", "bank_account"];
-
-function sourceCriticalityMultiplier(sourceType: SourceType): number {
-  if (sourceType === "api") return 1.15;
-  if (sourceType === "cloud") return 1.08;
-  if (sourceType === "database") return 1.0;
-  return 0.95;
-}
-
-function distinctCategories(discovery: DiscoveryScanResult): Set<SensitiveCategory> {
-  const s = new Set<SensitiveCategory>();
-  const summary = discovery.summary ?? {};
-  for (const k of Object.keys(summary) as SensitiveCategory[]) {
-    if ((summary[k] ?? 0) > 0) s.add(k);
+function normalizeWeights(weights: Partial<RiskScoringWeights>): RiskScoringWeights {
+  const factorIds = Object.keys(RISK_FACTOR_COMPUTERS) as RiskFactorId[];
+  const merged = { ...DEFAULT_WEIGHTS };
+  for (const id of factorIds) {
+    const w = weights[id];
+    if (w !== undefined && Number.isFinite(w) && w >= 0) {
+      merged[id] = w;
+    }
   }
-  return s;
-}
-
-function sensitiveRecordCount(discovery: DiscoveryScanResult): number {
-  let n = 0;
-  for (const r of discovery.findingsPerRecord) {
-    if (r.findings.length > 0) n += 1;
+  const sum = factorIds.reduce((acc, id) => acc + merged[id], 0);
+  if (sum <= 0) return DEFAULT_WEIGHTS;
+  const normalized = {} as RiskScoringWeights;
+  for (const id of factorIds) {
+    normalized[id] = merged[id] / sum;
   }
-  return n;
-}
-
-function totalFindings(discovery: DiscoveryScanResult): number {
-  let n = 0;
-  for (const r of discovery.findingsPerRecord) {
-    n += r.findings.length;
-  }
-  return n;
-}
-
-function comboCritical(cats: Set<SensitiveCategory>): boolean {
-  const hasGov = GOV_IDS.some((c) => cats.has(c));
-  const hasFin = FINANCIAL.some((c) => cats.has(c));
-  const hasAuth = cats.has("authentication_field");
-  if (hasGov && hasFin) return true;
-  if (hasAuth && (hasGov || hasFin)) return true;
-  if (cats.has("aadhaar") && cats.size >= 3) return true;
-  return false;
-}
-
-function volumeScore(totalRecords: number, sensitiveRecords: number, findings: number): number {
-  if (totalRecords <= 0) return 0;
-  const density = sensitiveRecords / totalRecords;
-  const findingRate = findings / totalRecords;
-  return Math.min(28, density * 22 + findingRate * 3);
-}
-
-function diversityBonus(cats: Set<SensitiveCategory>): number {
-  const highValue = [...cats].reduce((acc, c) => acc + (CATEGORY_WEIGHT[c] ?? 0), 0);
-  // Diminishing returns: encourage multi-attribute risk without exploding score on noise.
-  return Math.min(18, Math.max(0, cats.size - 1) * 4 + highValue * 0.02);
+  return normalized;
 }
 
 function mapScoreToLevel(score: number, criticalCombo: boolean): RiskLevel {
@@ -82,65 +41,159 @@ function mapScoreToLevel(score: number, criticalCombo: boolean): RiskLevel {
   return "low";
 }
 
+function factorSummariesFromContributions(contributions: RiskFactorContribution[]): string[] {
+  return contributions.flatMap((c) => [
+    `${c.id}:raw=${c.rawScore}`,
+    ...c.details.map((d) => `${c.id}:${d}`)
+  ]);
+}
+
+export interface AnalyzePrivacyRiskInput {
+  discovery: DiscoveryScanResult;
+  classification?: ClassificationScanResult;
+  profile?: ProfilingReport;
+  hints?: RiskExposureHints;
+  weights?: Partial<RiskScoringWeights>;
+}
+
 /**
- * Enterprise-oriented heuristic risk model: category weights, combinations, volume,
- * source criticality, and optional lineage-derived exposure hints.
+ * Week 3 privacy risk analysis engine — dynamic weighted scoring across seven risk factors,
+ * compliance exposure, overexposed record detection, and high-risk dataset classification.
+ */
+export function analyzePrivacyRisk(input: AnalyzePrivacyRiskInput): PrivacyRiskAnalysis {
+  const { discovery, classification, profile, hints, weights: weightOverrides } = input;
+  const systemId = stableSystemId(discovery.trace.sourceType, discovery.trace.sourceName);
+  const datasetId = stableDatasetId(systemId, discovery.trace.entityName);
+
+  const weights = normalizeWeights(weightOverrides ?? {});
+  const ctx: FactorContext = { discovery, classification, profile, hints };
+
+  const factorIds = Object.keys(RISK_FACTOR_COMPUTERS) as RiskFactorId[];
+  const factors = factorIds.map((id) => RISK_FACTOR_COMPUTERS[id](ctx, weights[id]));
+
+  let score = Math.round(factors.reduce((acc, f) => acc + f.weightedScore, 0));
+  const criticalCombo = comboCriticalFromDiscovery(discovery);
+  if (criticalCombo) {
+    score = Math.min(100, score + 8);
+  }
+
+  score = Math.max(0, Math.min(100, score));
+  const level = mapScoreToLevel(score, criticalCombo);
+  const complianceIntelligence = computeComplianceIntelligence(discovery, classification, factors, hints);
+  const compliance = complianceIntelligence.exposure;
+  const overexposedRecords = detectOverexposedRecords(discovery, classification);
+
+  const highRiskReasons: string[] = [];
+  if (level === "high" || level === "critical") {
+    highRiskReasons.push(`composite_risk_level=${level}`);
+  }
+  if (criticalCombo) highRiskReasons.push("critical_attribute_combination");
+  if (compliance.level === "high" || compliance.level === "critical") {
+    highRiskReasons.push(`compliance_exposure=${compliance.level}`);
+  }
+  if (complianceIntelligence.status === "non_compliant") {
+    highRiskReasons.push("compliance_status=non_compliant");
+  }
+  for (const flag of complianceIntelligence.flags.filter((f) => f.severity === "critical" || f.severity === "high")) {
+    highRiskReasons.push(`compliance_flag:${flag.id}`);
+  }
+  if (overexposedRecords.length > 0) {
+    highRiskReasons.push(`overexposed_records=${overexposedRecords.length}`);
+  }
+  const topFactors = [...factors].sort((a, b) => b.rawScore - a.rawScore).slice(0, 3);
+  for (const f of topFactors) {
+    if (f.rawScore >= 50) highRiskReasons.push(`factor:${f.id}=${f.rawScore}`);
+  }
+
+  const isHighRiskDataset = level === "high" || level === "critical";
+
+  return {
+    datasetId,
+    systemId,
+    level,
+    score,
+    factors,
+    factorSummaries: factorSummariesFromContributions(factors),
+    compliance,
+    complianceIntelligence,
+    overexposedRecords,
+    isHighRiskDataset,
+    highRiskReasons,
+    exposureHintsApplied: hints,
+    weightsApplied: weights
+  };
+}
+
+/**
+ * Backward-compatible assessment wrapper used by profiling and catalog flows.
  */
 export function assessRisk(
   discovery: DiscoveryScanResult,
   classification: ClassificationScanResult | undefined,
-  hints?: RiskExposureHints
+  hints?: RiskExposureHints,
+  profile?: ProfilingReport,
+  weights?: Partial<RiskScoringWeights>
 ): RiskAssessment {
-  const factors: string[] = [];
-  const cats = distinctCategories(discovery);
-  const totalRecords = Math.max(0, discovery.scannedRecords);
-  const sensRec = sensitiveRecordCount(discovery);
-  const findings = totalFindings(discovery);
+  const analysis = analyzePrivacyRisk({ discovery, classification, profile, hints, weights });
+  return {
+    level: analysis.level,
+    score: analysis.score,
+    factors: analysis.factorSummaries,
+    exposureHintsApplied: analysis.exposureHintsApplied,
+    analysis
+  };
+}
 
-  let base = 0;
-  for (const c of cats) {
-    const w = CATEGORY_WEIGHT[c];
-    base += w;
-    factors.push(`category_weight:${c}=${w}`);
+/** Re-export for consumers that import weights from engine. */
+export { DEFAULT_RISK_WEIGHTS } from "./types";
+
+/**
+ * Enriches exposure hints from mapping registry, catalog state, and duplicate groups.
+ */
+export function enrichExposureHints(
+  discovery: DiscoveryScanResult,
+  base?: RiskExposureHints,
+  profile?: ProfilingReport
+): RiskExposureHints {
+  const systemId = stableSystemId(discovery.trace.sourceType, discovery.trace.sourceName);
+  const datasetId = stableDatasetId(systemId, discovery.trace.entityName);
+  const flows = mappingRegistry.listFlows();
+  const downstream = flows.filter((f) => f.fromDatasetId === datasetId);
+  const inbound = flows.filter((f) => f.toDatasetId === datasetId);
+  const mapped = mappingRegistry.listDatasets().some((d) => d.id === datasetId);
+  const duplicateGroups = mappingRegistry.getDuplicateSensitiveGroups();
+
+  const crossDatasetDuplicateGroupCount = duplicateGroups.filter((g) => g.datasetIds.includes(datasetId)).length;
+
+  const lineage: RiskExposureHints = {
+    hasApiExposureFlow: downstream.some((f) => f.flowKind === "api_exposure"),
+    hasReplicationOrBackupFlow: downstream.some(
+      (f) => f.flowKind === "replication" || f.flowKind === "backup"
+    ),
+    crossDatasetDuplicateGroupCount,
+    unmappedDataset: !mapped,
+    noLineageFlows: downstream.length === 0 && inbound.length === 0,
+    isPubliclyExposed:
+      discovery.trace.sourceType === "api" ||
+      downstream.some((f) => f.flowKind === "api_exposure")
+  };
+
+  if (profile && profile.duplicateSensitivePatterns.groups.length > 0 && !crossDatasetDuplicateGroupCount) {
+    lineage.crossDatasetDuplicateGroupCount = profile.duplicateSensitivePatterns.groups.length;
   }
 
-  base = Math.min(72, base * 0.55);
-  base += volumeScore(totalRecords, sensRec, findings);
-  base += diversityBonus(cats);
-
-  const mult = sourceCriticalityMultiplier(discovery.trace.sourceType);
-  base *= mult;
-  factors.push(`source_criticality_multiplier=${mult.toFixed(2)}`);
-
-  if (classification?.summary) {
-    const labels = Object.keys(classification.summary).length;
-    if (labels >= 4) {
-      base += 6;
-      factors.push("classification_diversity_bonus=6");
-    }
-  }
-
-  if (hints?.hasApiExposureFlow) {
-    base += 10;
-    factors.push("exposure:api_flow=+10");
-  }
-  if (hints?.hasReplicationOrBackupFlow) {
-    base += 6;
-    factors.push("exposure:replication_or_backup=+6");
-  }
-
-  const criticalCombo = comboCritical(cats);
-  if (criticalCombo) {
-    factors.push("combination_rule=critical_pattern");
-  }
-
-  const score = Math.max(0, Math.min(100, Math.round(base)));
-  const level = mapScoreToLevel(score, criticalCombo);
+  const mergedDuplicateGroups =
+    (lineage.crossDatasetDuplicateGroupCount ?? 0) + (base?.crossDatasetDuplicateGroupCount ?? 0);
 
   return {
-    level,
-    score,
-    factors,
-    exposureHintsApplied: hints
+    hasApiExposureFlow: Boolean(lineage.hasApiExposureFlow || base?.hasApiExposureFlow),
+    hasReplicationOrBackupFlow: Boolean(lineage.hasReplicationOrBackupFlow || base?.hasReplicationOrBackupFlow),
+    isPubliclyExposed: Boolean(lineage.isPubliclyExposed || base?.isPubliclyExposed),
+    encryptionIndicated: base?.encryptionIndicated,
+    crossDatasetDuplicateGroupCount: mergedDuplicateGroups > 0 ? mergedDuplicateGroups : undefined,
+    unmappedDataset: lineage.unmappedDataset && base?.unmappedDataset !== false,
+    noLineageFlows: lineage.noLineageFlows && base?.noLineageFlows !== false,
+    daysSinceLastActivity: base?.daysSinceLastActivity,
+    complianceControls: base?.complianceControls
   };
 }

@@ -17,16 +17,38 @@
         </div>
         <div class="header__actions">
           <label class="field">
-            <span class="field__label">API key</span>
+            <span class="field__label">Email</span>
+            <input
+              id="loginEmail"
+              type="email"
+              autocomplete="username"
+              placeholder="viewer@local"
+              class="input"
+            />
+          </label>
+          <label class="field">
+            <span class="field__label">Password</span>
+            <input
+              id="loginPassword"
+              type="password"
+              autocomplete="current-password"
+              placeholder="Viewer1!"
+              class="input input--short"
+            />
+          </label>
+          <button type="button" id="btnLogin" class="btn btn--primary">Login</button>
+          <label class="field">
+            <span class="field__label">API key fallback</span>
             <input
               id="apiKey"
               type="password"
               autocomplete="off"
-              placeholder="Required when API_KEY is set"
-              class="input"
+              placeholder="Optional API_KEY"
+              class="input input--short"
             />
           </label>
           <button type="button" id="btnSaveKey" class="btn btn--ghost">Remember</button>
+          <button type="button" id="btnLogout" class="btn btn--ghost">Logout</button>
           <button type="button" id="btnRefresh" class="btn btn--primary">Refresh</button>
         </div>
       </header>

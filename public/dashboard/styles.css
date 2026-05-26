@@ -92,6 +92,10 @@ code {
   font: inherit;
 }
 
+.input--short {
+  min-width: 145px;
+}
+
 .input:focus {
   outline: none;
   border-color: var(--accent);

@@ -9,21 +9,30 @@ fs.mkdirSync(openapiDir, { recursive: true });
 
 const tags = [
   { name: "Health", description: "Liveness probe (no API key)." },
+  { name: "Auth", description: "JWT login, current principal, roles, and user administration (RBAC)." },
   { name: "Ingestion", description: "Connectors, upload, ingest previews/full, history." },
   { name: "Discovery", description: "Sensitive-data discovery scans." },
   { name: "Classification", description: "Privacy labels from discovery results." },
   { name: "Mapping", description: "Systems, datasets, fields, flows, lineage, export." },
   { name: "Profiling", description: "Profiling reports and governance catalog." },
+  { name: "Risk", description: "Week 3 privacy risk analysis engine." },
+  { name: "Remediation", description: "Remediation workflow tickets, status, severity, and audit history." },
   { name: "Search", description: "Search datasets, mapped fields, duplicate-sensitive groups." },
   { name: "Dashboard", description: "Aggregated metrics for the UI." },
-  { name: "Audit", description: "Structured audit trail." }
+  { name: "Audit", description: "Structured audit trail." },
+  { name: "Reporting", description: "Audit-ready governance reports (PDF, CSV, JSON) with searchable history." },
+  { name: "Alerts", description: "Queue-based alerting with deduplication, email, and in-app notifications." }
 ];
 
 const security = [{ bearerAuth: [] }, { apiKeyHeader: [] }];
 
 const components = {
   securitySchemes: {
-    bearerAuth: { type: "http", scheme: "bearer", description: "Bearer token = value of API_KEY env when set." },
+    bearerAuth: {
+      type: "http",
+      scheme: "bearer",
+      description: "JWT from POST /api/auth/login when JWT_SECRET is set; otherwise API_KEY value."
+    },
     apiKeyHeader: { type: "apiKey", in: "header", name: "X-API-Key", description: "Same value as API_KEY when set." }
   },
   schemas: {
@@ -123,7 +132,149 @@ const components = {
         records: { type: "array", items: { type: "object" } },
         persist: { type: "boolean" },
         profilingOptions: { type: "object" },
-        exposureHints: { type: "object" }
+        exposureHints: { $ref: "#/components/schemas/ExposureHints" }
+      }
+    },
+    ComplianceControlHints: {
+      type: "object",
+      description: "Governance control attestations used by the compliance intelligence engine.",
+      properties: {
+        retentionPolicyIndicated: { type: "boolean" },
+        consentManagementIndicated: { type: "boolean" },
+        privacyNoticeIndicated: { type: "boolean" },
+        lawfulBasisDocumented: { type: "boolean" },
+        accessControlsIndicated: { type: "boolean" },
+        breachNotificationProcessIndicated: { type: "boolean" },
+        dataPrincipalRightsProcessIndicated: { type: "boolean" },
+        baaInPlace: { type: "boolean" },
+        phiAuditLoggingIndicated: { type: "boolean" },
+        optOutMechanismIndicated: { type: "boolean" },
+        ismsRiskAssessmentIndicated: { type: "boolean" },
+        purposeLimitationDocumented: { type: "boolean" },
+        crossBorderSafeguardsIndicated: { type: "boolean" },
+        consumerDisclosureIndicated: { type: "boolean" },
+        ismsDocumented: { type: "boolean" }
+      }
+    },
+    ExposureHints: {
+      type: "object",
+      properties: {
+        hasApiExposureFlow: { type: "boolean" },
+        hasReplicationOrBackupFlow: { type: "boolean" },
+        isPubliclyExposed: { type: "boolean" },
+        encryptionIndicated: { type: "boolean" },
+        crossDatasetDuplicateGroupCount: { type: "integer", minimum: 0 },
+        unmappedDataset: { type: "boolean" },
+        noLineageFlows: { type: "boolean" },
+        daysSinceLastActivity: { type: "integer", minimum: 0 },
+        complianceControls: { $ref: "#/components/schemas/ComplianceControlHints" }
+      }
+    },
+    RiskAnalyzeRequest: {
+      type: "object",
+      required: ["discovery"],
+      properties: {
+        discovery: { type: "object", description: "DiscoveryScanResult" },
+        classification: { type: "object", description: "Optional ClassificationScanResult" },
+        records: { type: "array", items: { type: "object", additionalProperties: true } },
+        exposureHints: { $ref: "#/components/schemas/ExposureHints" },
+        weights: {
+          type: "object",
+          additionalProperties: { type: "number", minimum: 0, maximum: 1 },
+          description: "Optional risk factor weight overrides."
+        },
+        profilingOptions: { type: "object" }
+      },
+      example: {
+        discovery: { trace: { sourceType: "database", sourceName: "prod", entityName: "customers" }, scannedRecords: 1, findingsPerRecord: [], summary: { aadhaar: 1 } },
+        exposureHints: {
+          encryptionIndicated: false,
+          isPubliclyExposed: true,
+          complianceControls: { retentionPolicyIndicated: false, accessControlsIndicated: false }
+        }
+      }
+    },
+    RiskAnalyzeResponse: {
+      type: "object",
+      properties: {
+        analysis: { type: "object" },
+        assessment: { type: "object" },
+        profile: { type: "object" }
+      }
+    },
+    ComplianceIntelligenceRequest: {
+      type: "object",
+      required: ["discovery"],
+      properties: {
+        discovery: { type: "object" },
+        classification: { type: "object" },
+        exposureHints: { $ref: "#/components/schemas/ExposureHints" },
+        factorContributions: { type: "array", items: { type: "object" } }
+      }
+    },
+    ComplianceIntelligenceResponse: {
+      type: "object",
+      properties: {
+        compliance: { type: "object" },
+        regulations: { type: "array", items: { type: "string", enum: ["GDPR", "DPDP", "HIPAA", "CCPA", "ISO27001"] } },
+        controls: { type: "array", items: { type: "object" } },
+        flags: { type: "array", items: { type: "object" } },
+        remediationActions: { type: "array", items: { type: "string" } }
+      }
+    },
+    RemediationTicket: {
+      type: "object",
+      properties: {
+        id: { type: "string", format: "uuid" },
+        source: { type: "string" },
+        riskType: { type: "string" },
+        classificationCategory: { type: "string" },
+        suggestedAction: { type: "string" },
+        assignedUser: { type: "string" },
+        resolutionNotes: { type: "string" },
+        severity: { type: "string", enum: ["low", "medium", "high", "critical"] },
+        status: { type: "string", enum: ["open", "in_progress", "resolved", "closed"] },
+        datasetId: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        history: { type: "array", items: { type: "object" } }
+      }
+    },
+    RemediationListResponse: {
+      type: "object",
+      properties: {
+        items: { type: "array", items: { $ref: "#/components/schemas/RemediationTicket" } },
+        total: { type: "integer" },
+        page: { type: "integer" },
+        pageSize: { type: "integer" }
+      }
+    },
+    ReportRecord: {
+      type: "object",
+      properties: {
+        id: { type: "string", format: "uuid" },
+        reportType: { type: "string" },
+        title: { type: "string" },
+        generatedAt: { type: "string", format: "date-time" },
+        primaryFormat: { type: "string", enum: ["json", "csv", "pdf"] },
+        summary: { type: "string" },
+        generatedBy: { type: "string" },
+        tags: { type: "array", items: { type: "string" } }
+      }
+    },
+    AlertEvent: {
+      type: "object",
+      properties: {
+        id: { type: "string", format: "uuid" },
+        type: { type: "string", enum: ["critical_sensitive_discovery", "compliance_violation", "failed_scan", "high_risk_dataset", "remediation_overdue"] },
+        severity: { type: "string", enum: ["low", "medium", "high", "critical"] },
+        title: { type: "string" },
+        message: { type: "string" },
+        subjectKey: { type: "string" },
+        datasetId: { type: "string" },
+        status: { type: "string", enum: ["pending", "queued", "delivered", "suppressed", "failed"] },
+        channels: { type: "array", items: { type: "string", enum: ["email", "in_app"] } },
+        createdAt: { type: "string", format: "date-time" }
       }
     }
   },
@@ -165,6 +316,73 @@ const paths = {
       responses: {
         "200": jsonResp("OK", "#/components/schemas/HealthOk", { ok: true })
       }
+    }
+  },
+  "/api/auth/login": {
+    post: {
+      ...op("Auth", "Login and receive JWT access token"),
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["email", "password"],
+              properties: {
+                email: { type: "string", example: "viewer@local" },
+                password: { type: "string", example: "Viewer1!" }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        "200": { description: "Token issued", content: { "application/json": { schema: { type: "object" } } } },
+        "401": jsonResp("Invalid credentials", "#/components/schemas/ErrorBody")
+      }
+    }
+  },
+  "/api/auth/me": {
+    get: {
+      ...op("Auth", "Current authenticated principal and permissions"),
+      responses: { "200": { description: "Principal", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/auth/roles": {
+    get: {
+      ...op("Auth", "List roles and permission sets"),
+      responses: { "200": { description: "Roles", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/auth/users": {
+    get: {
+      ...op("Auth", "List users (Super Admin)"),
+      responses: { "200": { description: "Users", content: { "application/json": { schema: { type: "object" } } } } }
+    },
+    post: {
+      ...op("Auth", "Create user (Super Admin)"),
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["email", "password", "displayName", "role"],
+              properties: {
+                email: { type: "string" },
+                password: { type: "string" },
+                displayName: { type: "string" },
+                role: {
+                  type: "string",
+                  enum: ["super_admin", "privacy_admin", "security_analyst", "auditor", "viewer"]
+                }
+              }
+            }
+          }
+        }
+      },
+      responses: { "201": { description: "Created", content: { "application/json": { schema: { type: "object" } } } } }
     }
   },
   "/api/db/postgres/health": {
@@ -674,21 +892,230 @@ const paths = {
   "/api/catalog/datasets": {
     get: { ...op("Profiling", "List catalog datasets"), responses: { "200": { description: "datasets", content: { "application/json": { schema: { type: "array" } } } } } }
   },
+  "/api/risk/analyze": {
+    post: {
+      ...op("Risk", "Full privacy risk analysis from discovery"),
+      requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/RiskAnalyzeRequest" } } } },
+      responses: { "200": jsonResp("analysis, assessment, profile", "#/components/schemas/RiskAnalyzeResponse") }
+    }
+  },
+  "/api/risk/high-risk-datasets": {
+    get: {
+      ...op("Risk", "High/critical risk datasets from catalog"),
+      parameters: [
+        { name: "minLevel", in: "query", schema: { type: "string", enum: ["high", "critical"] } },
+        { name: "limit", in: "query", schema: { type: "integer" } }
+      ],
+      responses: { "200": { description: "high-risk dataset list", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/risk/prioritization": {
+    get: {
+      ...op("Risk", "Ranked remediation queue"),
+      parameters: [
+        { name: "minLevel", in: "query", schema: { type: "string", enum: ["medium", "high", "critical"] } },
+        { name: "limit", in: "query", schema: { type: "integer" } }
+      ],
+      responses: { "200": { description: "prioritized items", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/risk/aggregation/sources": {
+    get: { ...op("Risk", "Risk aggregation per source"), responses: { "200": { description: "source aggregations", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
+  "/api/risk/aggregation/systems": {
+    get: { ...op("Risk", "Risk aggregation per system"), responses: { "200": { description: "system aggregations", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
+  "/api/risk/compliance": {
+    post: {
+      ...op("Risk", "Compliance intelligence (regulations, controls, flags, remediation)"),
+      requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/ComplianceIntelligenceRequest" } } } },
+      responses: { "200": jsonResp("compliance intelligence report", "#/components/schemas/ComplianceIntelligenceResponse") }
+    }
+  },
+  "/api/risk/compliance/catalog": {
+    get: {
+      ...op("Risk", "Compliance regulation and control catalog"),
+      responses: { "200": { description: "regulations and controls", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/risk/compliance-exposure": {
+    get: { ...op("Risk", "Compliance exposure summary"), responses: { "200": { description: "compliance scores", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
+  "/api/remediation": {
+    get: {
+      ...op("Remediation", "Search remediation tickets"),
+      parameters: [
+        { name: "q", in: "query", schema: { type: "string" }, description: "Search source, risk type, action, assignee" },
+        { name: "status", in: "query", schema: { type: "string", enum: ["open", "in_progress", "resolved", "closed"] } },
+        { name: "severity", in: "query", schema: { type: "string", enum: ["low", "medium", "high", "critical"] } },
+        { name: "datasetId", in: "query", schema: { type: "string" } },
+        { name: "page", in: "query", schema: { type: "integer" } },
+        { name: "pageSize", in: "query", schema: { type: "integer" } }
+      ],
+      responses: { "200": jsonResp("paginated remediation list", "#/components/schemas/RemediationListResponse") }
+    },
+    post: {
+      ...op("Remediation", "Create remediation ticket"),
+      requestBody: {
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["source", "riskType", "classificationCategory", "suggestedAction", "severity"],
+              properties: {
+                source: { type: "string" },
+                riskType: { type: "string" },
+                classificationCategory: { type: "string" },
+                suggestedAction: { type: "string" },
+                severity: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                assignedUser: { type: "string" },
+                resolutionNotes: { type: "string" },
+                datasetId: { type: "string" },
+                status: { type: "string", enum: ["open", "in_progress", "resolved", "closed"] }
+              }
+            }
+          }
+        }
+      },
+      responses: { "201": jsonResp("created ticket", "#/components/schemas/RemediationTicket") }
+    }
+  },
+  "/api/remediation/from-prioritization": {
+    post: {
+      ...op("Remediation", "Bulk-create tickets from risk prioritization queue"),
+      requestBody: {
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                minLevel: { type: "string", enum: ["medium", "high", "critical"] },
+                limit: { type: "integer" },
+                skipExistingForDataset: { type: "boolean" }
+              }
+            }
+          }
+        }
+      },
+      responses: { "201": { description: "created tickets", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/remediation/{id}": {
+    get: {
+      ...op("Remediation", "Get remediation ticket by id"),
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+      responses: { "200": jsonResp("ticket", "#/components/schemas/RemediationTicket") }
+    },
+    patch: {
+      ...op("Remediation", "Update remediation ticket"),
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+      requestBody: {
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                source: { type: "string" },
+                riskType: { type: "string" },
+                classificationCategory: { type: "string" },
+                suggestedAction: { type: "string" },
+                severity: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                status: { type: "string", enum: ["open", "in_progress", "resolved", "closed"] },
+                assignedUser: { type: "string", nullable: true },
+                resolutionNotes: { type: "string", nullable: true },
+                actor: { type: "string" }
+              }
+            }
+          }
+        }
+      },
+      responses: { "200": jsonResp("updated ticket", "#/components/schemas/RemediationTicket") }
+    }
+  },
+  "/api/remediation/{id}/history": {
+    get: {
+      ...op("Remediation", "Per-ticket remediation audit history"),
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+      responses: { "200": { description: "history entries", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
   "/api/search/datasets": {
     get: {
-      ...op("Search", "Search governance datasets"),
+      ...op("Search", "Search governance datasets (compliance, risk, remediation, multi-label, keyword, cursor)"),
       parameters: [
-        { name: "riskLevel", in: "query", schema: { type: "string" } },
+        { name: "riskLevel", in: "query", schema: { type: "string", enum: ["low", "medium", "high", "critical"] } },
+        { name: "riskLevels", in: "query", schema: { type: "string", description: "Comma-separated risk levels" } },
+        { name: "minRiskScore", in: "query", schema: { type: "number" } },
+        { name: "maxRiskScore", in: "query", schema: { type: "number" } },
         { name: "classification", in: "query", schema: { type: "string" } },
+        { name: "classifications", in: "query", schema: { type: "string", description: "Comma-separated labels (AND by default)" } },
+        { name: "classificationMode", in: "query", schema: { type: "string", enum: ["and", "or"] } },
         { name: "sourceType", in: "query", schema: { type: "string" } },
         { name: "sourceName", in: "query", schema: { type: "string" } },
+        { name: "systemId", in: "query", schema: { type: "string" } },
+        { name: "datasetId", in: "query", schema: { type: "string" } },
         { name: "detectionType", in: "query", schema: { type: "string" } },
         { name: "detectionCategory", in: "query", schema: { type: "string" } },
+        { name: "detectionCategories", in: "query", schema: { type: "string", description: "e.g. aadhaar,pan (AND)" } },
+        { name: "detectionMode", in: "query", schema: { type: "string", enum: ["and", "or"] } },
+        { name: "complianceRegulation", in: "query", schema: { type: "string", enum: ["GDPR", "DPDP", "HIPAA", "CCPA", "ISO27001"] } },
+        { name: "complianceViolation", in: "query", schema: { type: "boolean" } },
+        { name: "complianceStatus", in: "query", schema: { type: "string" } },
+        { name: "hasUnresolvedRemediation", in: "query", schema: { type: "boolean" } },
+        { name: "q", in: "query", schema: { type: "string", description: "Keyword search" } },
+        { name: "sortBy", in: "query", schema: { type: "string", enum: ["updatedAt", "riskScore", "riskLevel", "sourceName", "complianceScore"] } },
+        { name: "sortOrder", in: "query", schema: { type: "string", enum: ["asc", "desc"] } },
+        { name: "cursor", in: "query", schema: { type: "string" } },
         { name: "mappedOnly", in: "query", schema: { type: "boolean" } },
         { name: "page", in: "query", schema: { type: "integer" } },
         { name: "pageSize", in: "query", schema: { type: "integer" } }
       ],
       responses: { "200": { description: "page of results", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/search/global": {
+    get: {
+      ...op("Search", "Global keyword search across datasets, fields, remediation, lineage, sources"),
+      parameters: [
+        { name: "q", in: "query", required: true, schema: { type: "string" } },
+        { name: "types", in: "query", schema: { type: "string", description: "Comma-separated: datasets,fields,remediation,lineage,sources" } },
+        { name: "page", in: "query", schema: { type: "integer" } },
+        { name: "pageSize", in: "query", schema: { type: "integer" } }
+      ],
+      responses: { "200": { description: "grouped search hits", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/search/lineage": {
+    get: {
+      ...op("Search", "Search data lineage by dataset, system, flow, or related source name"),
+      parameters: [
+        { name: "datasetId", in: "query", schema: { type: "string" } },
+        { name: "systemId", in: "query", schema: { type: "string" } },
+        { name: "direction", in: "query", schema: { type: "string", enum: ["upstream", "downstream", "both"] } },
+        { name: "flowKind", in: "query", schema: { type: "string" } },
+        { name: "relatedSourceName", in: "query", schema: { type: "string" } },
+        { name: "page", in: "query", schema: { type: "integer" } },
+        { name: "pageSize", in: "query", schema: { type: "integer" } }
+      ],
+      responses: { "200": { description: "lineage hits", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/search/remediation": {
+    get: {
+      ...op("Search", "Search remediation tickets (unresolved filter, keyword, cursor)"),
+      parameters: [
+        { name: "q", in: "query", schema: { type: "string" } },
+        { name: "status", in: "query", schema: { type: "string" } },
+        { name: "unresolved", in: "query", schema: { type: "boolean" } },
+        { name: "severity", in: "query", schema: { type: "string" } },
+        { name: "datasetId", in: "query", schema: { type: "string" } },
+        { name: "sortBy", in: "query", schema: { type: "string" } },
+        { name: "sortOrder", in: "query", schema: { type: "string" } },
+        { name: "cursor", in: "query", schema: { type: "string" } },
+        { name: "page", in: "query", schema: { type: "integer" } },
+        { name: "pageSize", in: "query", schema: { type: "integer" } }
+      ],
+      responses: { "200": { description: "remediation page", content: { "application/json": { schema: { type: "object" } } } } }
     }
   },
   "/api/search/mapped-fields": {
@@ -733,8 +1160,252 @@ const paths = {
   "/api/dashboard/metrics/high-risk-sources": {
     get: { ...op("Dashboard", "High-risk sources"), responses: { "200": { description: "list", content: { "application/json": { schema: { type: "object" } } } } } }
   },
+  "/api/dashboard/metrics/sources-count": {
+    get: { ...op("Dashboard", "Total scanned sources"), responses: { "200": { description: "metrics", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
+  "/api/dashboard/metrics/high-risk-datasets": {
+    get: { ...op("Dashboard", "High-risk datasets"), responses: { "200": { description: "metrics", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
+  "/api/dashboard/metrics/compliance": {
+    get: { ...op("Dashboard", "Compliance violations"), responses: { "200": { description: "metrics", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
+  "/api/dashboard/metrics/heatmap": {
+    get: { ...op("Dashboard", "Source-wise risk heatmap"), responses: { "200": { description: "heatmap", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
+  "/api/dashboard/metrics/remediation": {
+    get: { ...op("Dashboard", "Remediation status metrics"), responses: { "200": { description: "metrics", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
+  "/api/dashboard/metrics/exposure": {
+    get: { ...op("Dashboard", "Most exposed systems"), responses: { "200": { description: "systems", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
+  "/api/dashboard/governance": {
+    get: { ...op("Dashboard", "Data governance dashboard payload"), responses: { "200": { description: "governance metrics", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
   "/api/dashboard/summary": {
     get: { ...op("Dashboard", "Aggregated summary"), responses: { "200": { description: "summary", content: { "application/json": { schema: { type: "object" } } } } } }
+  },
+  "/api/reports/types": {
+    get: {
+      ...op("Reporting", "List supported report types and export formats"),
+      responses: {
+        "200": {
+          description: "report catalog",
+          content: { "application/json": { schema: { type: "object" } } }
+        }
+      }
+    }
+  },
+  "/api/reports": {
+    get: {
+      ...op("Reporting", "Search report history"),
+      parameters: [
+        { name: "reportType", in: "query", schema: { type: "string" } },
+        { name: "format", in: "query", schema: { type: "string", enum: ["json", "csv", "pdf"] } },
+        { name: "q", in: "query", schema: { type: "string" } },
+        { name: "generatedFrom", in: "query", schema: { type: "string", format: "date-time" } },
+        { name: "generatedTo", in: "query", schema: { type: "string", format: "date-time" } },
+        { name: "page", in: "query", schema: { type: "integer" } },
+        { name: "pageSize", in: "query", schema: { type: "integer" } }
+      ],
+      responses: {
+        "200": {
+          description: "paginated report list",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  items: { type: "array", items: { $ref: "#/components/schemas/ReportRecord" } },
+                  total: { type: "integer" },
+                  page: { type: "integer" },
+                  pageSize: { type: "integer" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/api/reports/generate": {
+    post: {
+      ...op("Reporting", "Generate audit-ready report"),
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["reportType", "format"],
+              properties: {
+                reportType: {
+                  type: "string",
+                  enum: [
+                    "privacy_risk",
+                    "compliance",
+                    "source_discovery",
+                    "classification_summary",
+                    "remediation",
+                    "executive_summary"
+                  ]
+                },
+                format: { type: "string", enum: ["json", "csv", "pdf"] },
+                generatedBy: { type: "string" },
+                tags: { type: "array", items: { type: "string" } }
+              }
+            },
+            example: { reportType: "executive_summary", format: "json", generatedBy: "security-team" }
+          }
+        }
+      },
+      responses: {
+        "201": {
+          description: "report generated",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  report: { $ref: "#/components/schemas/ReportRecord" },
+                  download: { type: "object" }
+                }
+              }
+            }
+          }
+        },
+        "400": { description: "validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorBody" } } } }
+      }
+    }
+  },
+  "/api/reports/{id}": {
+    get: {
+      ...op("Reporting", "Get stored report with full structured content"),
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+      responses: {
+        "200": {
+          description: "report",
+          content: {
+            "application/json": {
+              schema: {
+                allOf: [
+                  { $ref: "#/components/schemas/ReportRecord" },
+                  { type: "object", properties: { content: { type: "object" } } }
+                ]
+              }
+            }
+          }
+        },
+        "404": { description: "not found", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorBody" } } } }
+      }
+    }
+  },
+  "/api/reports/{id}/download": {
+    get: {
+      ...op("Reporting", "Download report (JSON, CSV, or PDF attachment)"),
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        { name: "format", in: "query", schema: { type: "string", enum: ["json", "csv", "pdf"] } }
+      ],
+      responses: {
+        "200": { description: "file download" },
+        "404": { description: "not found", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorBody" } } } }
+      }
+    }
+  },
+  "/api/alerts": {
+    get: {
+      ...op("Alerts", "List alert events"),
+      parameters: [
+        {
+          name: "type",
+          in: "query",
+          schema: {
+            type: "string",
+            enum: [
+              "critical_sensitive_discovery",
+              "compliance_violation",
+              "failed_scan",
+              "high_risk_dataset",
+              "remediation_overdue"
+            ]
+          }
+        },
+        { name: "severity", in: "query", schema: { type: "string", enum: ["low", "medium", "high", "critical"] } },
+        {
+          name: "status",
+          in: "query",
+          schema: { type: "string", enum: ["pending", "queued", "delivered", "suppressed", "failed"] }
+        },
+        { name: "datasetId", in: "query", schema: { type: "string" } },
+        { name: "page", in: "query", schema: { type: "integer" } },
+        { name: "pageSize", in: "query", schema: { type: "integer" } }
+      ],
+      responses: {
+        "200": {
+          description: "paginated alerts",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  items: { type: "array", items: { $ref: "#/components/schemas/AlertEvent" } },
+                  total: { type: "integer" },
+                  page: { type: "integer" },
+                  pageSize: { type: "integer" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "/api/alerts/stats": {
+    get: {
+      ...op("Alerts", "Alert counts by status and type"),
+      responses: { "200": { description: "stats", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/alerts/notifications": {
+    get: {
+      ...op("Alerts", "In-app notifications"),
+      parameters: [
+        { name: "unreadOnly", in: "query", schema: { type: "boolean" } },
+        { name: "type", in: "query", schema: { type: "string" } },
+        { name: "page", in: "query", schema: { type: "integer" } },
+        { name: "pageSize", in: "query", schema: { type: "integer" } }
+      ],
+      responses: { "200": { description: "notifications", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/alerts/notifications/read-all": {
+    post: {
+      ...op("Alerts", "Mark all in-app notifications as read"),
+      responses: { "200": { description: "marked count", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/alerts/notifications/{id}/read": {
+    patch: {
+      ...op("Alerts", "Mark notification read"),
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+      responses: {
+        "200": { description: "updated", content: { "application/json": { schema: { type: "object" } } } },
+        "404": { description: "not found", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorBody" } } } }
+      }
+    }
+  },
+  "/api/alerts/email-outbox": {
+    get: {
+      ...op("Alerts", "Email delivery log"),
+      parameters: [{ name: "limit", in: "query", schema: { type: "integer" } }],
+      responses: { "200": { description: "outbox entries", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/alerts/evaluate-overdue": {
+    post: {
+      ...op("Alerts", "Run remediation overdue check"),
+      responses: { "200": { description: "evaluation result", content: { "application/json": { schema: { type: "object" } } } } }
+    }
   },
   "/api/audit/logs": {
     get: {
@@ -819,7 +1490,7 @@ const openapi = {
     title: "Data Ingestion & Privacy Intelligence API",
     version: "1.0.0",
     description:
-      "Week 1 ingestion (Postgres, MySQL, Mongo, S3, file, API) and Week 2 discovery → classification → mapping → profiling → risk → search → dashboard → audit.\n\n**Auth:** When `API_KEY` is set on the server, send `Authorization: Bearer <API_KEY>` or `X-API-Key: <API_KEY>` on `/api/*` except `/health` and documentation routes.\n\n**Docs UI:** `GET /docs` (Swagger UI). **Raw spec:** `GET /openapi.json`."
+      "Proteccio Discover backend covering Week 1 ingestion, Week 2 discovery/classification/mapping/profiling, and Week 3 governance/compliance intelligence: privacy risk, compliance controls, remediation workflows, dashboards, reporting, RBAC, alerting, and global search.\n\n**Auth:** When `JWT_SECRET` is set, use `POST /api/auth/login` and send `Authorization: Bearer <JWT>`. When only `API_KEY` is set, send `Authorization: Bearer <API_KEY>` or `X-API-Key: <API_KEY>` on `/api/*` except `/health` and documentation routes.\n\n**Docs UI:** `GET /docs` (Swagger UI). **Raw spec:** `GET /openapi.json`."
   },
   servers: [{ url: "{baseUrl}", variables: { baseUrl: { default: "http://localhost:3000" } } }],
   tags,
@@ -878,6 +1549,24 @@ const collection = {
     {
       name: "Health",
       item: [pmItem("GET /health", "GET", "/health", undefined, "No auth.", { noAuth: true })]
+    },
+    {
+      name: "Auth",
+      item: [
+        pmItem("POST login", "POST", "/api/auth/login", {
+          email: "viewer@local",
+          password: "Viewer1!"
+        }, "No auth. Returns JWT.", { noAuth: true }),
+        pmItem("GET me", "GET", "/api/auth/me"),
+        pmItem("GET roles", "GET", "/api/auth/roles"),
+        pmItem("GET users", "GET", "/api/auth/users"),
+        pmItem("POST create user", "POST", "/api/auth/users", {
+          email: "newuser@local",
+          password: "ChangeMe1!",
+          displayName: "New User",
+          role: "viewer"
+        })
+      ]
     },
     {
       name: "Ingestion",
@@ -975,16 +1664,57 @@ const collection = {
       name: "Search",
       item: [
         pmItem("GET search datasets", "GET", "/api/search/datasets?page=1&pageSize=20"),
+        pmItem("GET search datasets GDPR violations", "GET", "/api/search/datasets?complianceRegulation=GDPR&complianceViolation=true"),
+        pmItem("GET search datasets critical risk", "GET", "/api/search/datasets?riskLevel=critical&sortBy=riskScore&sortOrder=desc"),
+        pmItem("GET search datasets aadhaar + financial", "GET", "/api/search/datasets?detectionCategories=aadhaar&classifications=Financial%20Data"),
+        pmItem("GET search global", "GET", "/api/search/global?q=gdpr"),
+        pmItem("GET search lineage", "GET", "/api/search/lineage?direction=both&page=1&pageSize=20"),
+        pmItem("GET search remediation unresolved", "GET", "/api/search/remediation?unresolved=true"),
         pmItem("GET search mapped-fields", "GET", "/api/search/mapped-fields?page=1&pageSize=20")
       ]
     },
     {
       name: "Dashboard",
-      item: [pmItem("GET dashboard analytics", "GET", "/api/dashboard/analytics"), pmItem("GET dashboard summary", "GET", "/api/dashboard/summary")]
+      item: [
+        pmItem("GET dashboard analytics", "GET", "/api/dashboard/analytics"),
+        pmItem("GET dashboard governance", "GET", "/api/dashboard/governance"),
+        pmItem("GET dashboard summary", "GET", "/api/dashboard/summary"),
+        pmItem("GET dashboard compliance metrics", "GET", "/api/dashboard/metrics/compliance"),
+        pmItem("GET dashboard remediation metrics", "GET", "/api/dashboard/metrics/remediation"),
+        pmItem("GET dashboard heatmap", "GET", "/api/dashboard/metrics/heatmap")
+      ]
     },
     {
       name: "Audit",
       item: [pmItem("GET audit logs", "GET", "/api/audit/logs?limit=50")]
+    },
+    {
+      name: "Alerts",
+      item: [
+        pmItem("GET alerts", "GET", "/api/alerts?page=1&pageSize=20"),
+        pmItem("GET alert stats", "GET", "/api/alerts/stats"),
+        pmItem("GET notifications", "GET", "/api/alerts/notifications?unreadOnly=true"),
+        pmItem("POST evaluate overdue", "POST", "/api/alerts/evaluate-overdue"),
+        pmItem("GET email outbox", "GET", "/api/alerts/email-outbox?limit=20")
+      ]
+    },
+    {
+      name: "Reporting",
+      item: [
+        pmItem("GET report types", "GET", "/api/reports/types"),
+        pmItem("GET report history", "GET", "/api/reports?page=1&pageSize=20"),
+        pmItem("POST generate executive summary (JSON)", "POST", "/api/reports/generate", {
+          reportType: "executive_summary",
+          format: "json",
+          generatedBy: "demo-user"
+        }),
+        pmItem("POST generate privacy risk (PDF)", "POST", "/api/reports/generate", {
+          reportType: "privacy_risk",
+          format: "pdf"
+        }),
+        pmItem("GET report by id (replace id)", "GET", "/api/reports/00000000-0000-0000-0000-000000000000"),
+        pmItem("GET download report CSV (replace id)", "GET", "/api/reports/00000000-0000-0000-0000-000000000000/download?format=csv")
+      ]
     }
   ]
 };

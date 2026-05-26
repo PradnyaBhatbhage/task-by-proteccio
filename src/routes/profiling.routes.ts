@@ -5,8 +5,27 @@ import { governanceCatalog } from "../catalog";
 import { buildProfilingReport } from "../profiling";
 import { assessRisk, mergeExposureHintsForDiscovery, type RiskExposureHints } from "../risk";
 import { looksLikeClassificationScanResult, looksLikeDiscoveryScanResult } from "../utils/scan-payload";
+import { evaluatePostScanAlerts } from "../alerting";
 
 const router = Router();
+
+const ComplianceControlHintsSchema = z.object({
+  retentionPolicyIndicated: z.boolean().optional(),
+  consentManagementIndicated: z.boolean().optional(),
+  privacyNoticeIndicated: z.boolean().optional(),
+  lawfulBasisDocumented: z.boolean().optional(),
+  accessControlsIndicated: z.boolean().optional(),
+  breachNotificationProcessIndicated: z.boolean().optional(),
+  dataPrincipalRightsProcessIndicated: z.boolean().optional(),
+  baaInPlace: z.boolean().optional(),
+  phiAuditLoggingIndicated: z.boolean().optional(),
+  optOutMechanismIndicated: z.boolean().optional(),
+  ismsRiskAssessmentIndicated: z.boolean().optional(),
+  purposeLimitationDocumented: z.boolean().optional(),
+  crossBorderSafeguardsIndicated: z.boolean().optional(),
+  consumerDisclosureIndicated: z.boolean().optional(),
+  ismsDocumented: z.boolean().optional()
+});
 
 const ProfilingBodySchema = z.object({
   discovery: z.unknown(),
@@ -25,7 +44,14 @@ const ProfilingBodySchema = z.object({
   exposureHints: z
     .object({
       hasApiExposureFlow: z.boolean().optional(),
-      hasReplicationOrBackupFlow: z.boolean().optional()
+      hasReplicationOrBackupFlow: z.boolean().optional(),
+      isPubliclyExposed: z.boolean().optional(),
+      encryptionIndicated: z.boolean().optional(),
+      crossDatasetDuplicateGroupCount: z.number().int().nonnegative().optional(),
+      unmappedDataset: z.boolean().optional(),
+      noLineageFlows: z.boolean().optional(),
+      daysSinceLastActivity: z.number().int().nonnegative().optional(),
+      complianceControls: ComplianceControlHintsSchema.optional()
     })
     .optional()
 });
@@ -67,11 +93,15 @@ router.post("/profiling/profile", (req, res, next) => {
 
   try {
     const profile = buildProfilingReport(body.discovery, classification, body.records, body.profilingOptions);
-    const risk = assessRisk(
+    const mergedHints = mergeExposureHintsForDiscovery(
       body.discovery,
-      classification,
-      mergeExposureHintsForDiscovery(body.discovery, body.exposureHints as RiskExposureHints | undefined)
+      body.exposureHints as RiskExposureHints | undefined,
+      profile
     );
+    const risk = assessRisk(body.discovery, classification, mergedHints, profile);
+    if (risk.analysis) {
+      evaluatePostScanAlerts(body.discovery, risk.analysis);
+    }
 
     let catalogSnapshot = undefined as ReturnType<typeof governanceCatalog.get> | undefined;
     if (body.persist === true) {
@@ -154,6 +184,10 @@ router.post("/catalog/register", (req, res) => {
     profilingOptions: body.profilingOptions,
     exposureHints: body.exposureHints as RiskExposureHints | undefined
   });
+
+  if (snap.risk.analysis) {
+    evaluatePostScanAlerts(body.discovery, snap.risk.analysis);
+  }
 
   auditTrail.append({
     source: "api:catalog/register",

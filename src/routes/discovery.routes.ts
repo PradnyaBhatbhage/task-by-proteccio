@@ -8,6 +8,8 @@ import {
 } from "../discovery";
 import { classifyDiscoveryScan } from "../classification";
 import { auditTrail } from "../audit";
+import { evaluateCriticalSensitiveDiscovery, evaluateFailedScan } from "../alerting";
+import { MAX_DISCOVERY_RECORDS } from "../utils/security";
 
 const router = Router();
 
@@ -52,6 +54,19 @@ router.post("/discovery/scan", async (req, res, next) => {
       return res.status(400).json({ error: "Body must include 'records' as an array of objects." });
     }
 
+    if (records.length > MAX_DISCOVERY_RECORDS) {
+      auditTrail.append({
+        source: "api:discovery/scan",
+        action: "discovery_scan",
+        status: "failure",
+        durationMs: Date.now() - started,
+        metadata: { reason: "too_many_records", count: records.length, max: MAX_DISCOVERY_RECORDS }
+      });
+      return res.status(413).json({
+        error: `Too many records (${records.length}). Maximum per request is ${MAX_DISCOVERY_RECORDS}. Use batchSize for chunked processing.`
+      });
+    }
+
     const classifyRequested =
       req.body?.classify === true ||
       req.body?.classify === "true" ||
@@ -83,8 +98,13 @@ router.post("/discovery/scan", async (req, res, next) => {
     const normalizedRecords = records as Record<string, unknown>[];
     const trace = { sourceType, sourceName, entityName };
 
+    const fireDiscoveryAlerts = (result: ReturnType<typeof scanRecords>) => {
+      evaluateCriticalSensitiveDiscovery(result);
+    };
+
     if (batchSize !== undefined) {
       const result = await scanRecordsBatched(normalizedRecords, trace, batchSize, options);
+      fireDiscoveryAlerts(result);
       if (classifyRequested) {
         const classification = classifyDiscoveryScan(result);
         auditTrail.append({
@@ -117,6 +137,7 @@ router.post("/discovery/scan", async (req, res, next) => {
     }
 
     const result = scanRecords(normalizedRecords, trace, options);
+    fireDiscoveryAlerts(result);
     if (classifyRequested) {
       const classification = classifyDiscoveryScan(result);
       auditTrail.append({
@@ -147,6 +168,13 @@ router.post("/discovery/scan", async (req, res, next) => {
     });
     return res.json(result);
   } catch (err) {
+    const msg = err instanceof Error ? err.message : "unknown";
+    evaluateFailedScan({
+      subjectKey: `discovery:scan:${Date.now()}`,
+      source: "api:discovery/scan",
+      errorMessage: msg,
+      scanKind: "discovery_scan"
+    });
     auditTrail.append({
       source: "api:discovery/scan",
       action: "scan_failed",

@@ -3,11 +3,23 @@ import pino from "pino";
 const redact: string[] = [
   "req.headers.authorization",
   "req.headers['x-api-key']",
+  "req.headers.cookie",
   "password",
+  "token",
+  "accessToken",
+  "refreshToken",
+  "secret",
   "secretKey",
+  "apiKey",
+  "API_KEY",
+  "JWT_SECRET",
   "AWS_SECRET_ACCESS_KEY",
   "MYSQL_PASSWORD",
-  "POSTGRES_PASSWORD"
+  "POSTGRES_PASSWORD",
+  "*.password",
+  "*.token",
+  "*.secret",
+  "*.apiKey"
 ];
 
 const level = process.env.NODE_ENV === "production" ? "info" : "debug";

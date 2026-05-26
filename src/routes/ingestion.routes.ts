@@ -12,11 +12,21 @@ import { MySQLConnector } from "../connectors/mysql.connector";
 import { MongoDBConnector } from "../connectors/mongodb.connector";
 import { assertSafeIdentifier } from "../utils/identifiers";
 import { scanRecords } from "../discovery";
+import { maskRecordsForPreview } from "../discovery/mask";
+import { clampDbPreviewLimit, clampIngestMaxRecords, clampPreviewRows } from "../utils/security";
 
 function includeDiscoveryFromBody(body: unknown): boolean {
   if (!body || typeof body !== "object") return false;
   const d = (body as Record<string, unknown>).discovery;
   return d === true || d === "true" || d === 1 || d === "1";
+}
+
+/** Never return raw sensitive field values in API previews. */
+function previewSample(
+  records: Record<string, unknown>[],
+  rowCount: number
+): Record<string, unknown>[] {
+  return maskRecordsForPreview(records.slice(0, clampPreviewRows(rowCount)));
 }
 
 const router = Router();
@@ -178,7 +188,7 @@ router.post("/ingest/api", async (req, res, next) => {
       const payload: Record<string, unknown> = {
         recordCount: normalized.length,
         metadata,
-        sample: normalized.slice(0, 5)
+        sample: previewSample(normalized, 5)
       };
       if (includeDiscoveryFromBody(req.body)) {
         payload.discovery = scanRecords(normalized, {
@@ -202,7 +212,7 @@ router.post("/ingest/file/preview", uploadMiddleware.single("file"), async (req,
     if (!req.file) return res.status(400).json({ error: "No file uploaded." });
     await runBasicMalwareScan(req.file.path);
     const maxRecordsRaw = req.body.maxRecords ? Number(req.body.maxRecords) : 20;
-    const maxRecords = Number.isFinite(maxRecordsRaw) ? Math.max(1, maxRecordsRaw) : 20;
+    const maxRecords = clampPreviewRows(Number.isFinite(maxRecordsRaw) ? maxRecordsRaw : 20);
     const schemaMapping =
       req.body.schemaMapping && typeof req.body.schemaMapping === "object" ? (req.body.schemaMapping as Record<string, string>) : undefined;
 
@@ -228,7 +238,7 @@ router.post("/ingest/file/preview", uploadMiddleware.single("file"), async (req,
       parser: parsed.parser,
       warnings: parsed.warnings,
       metadata,
-      preview: normalized.slice(0, 20)
+      preview: previewSample(normalized, 20)
     };
     if (includeDiscoveryFromBody(body)) {
       out.discovery = scanRecords(normalized, {
@@ -248,10 +258,7 @@ router.post("/ingest/s3/preview", async (req, res, next) => {
     const bucket = String(req.body.bucket ?? "");
     const key = String(req.body.key ?? "");
     const maxRecordsInput = req.body.maxRecords !== undefined ? Number(req.body.maxRecords) : undefined;
-    const maxRecords =
-      maxRecordsInput !== undefined && Number.isFinite(maxRecordsInput)
-        ? Math.max(1, maxRecordsInput)
-        : undefined;
+    const maxRecords = clampIngestMaxRecords(maxRecordsInput);
 
     if (!bucket || !key) {
       return res.status(400).json({ error: "Body parameters 'bucket' and 'key' are required." });
@@ -279,7 +286,7 @@ router.post("/ingest/s3/preview", async (req, res, next) => {
         parser: parsed.parser,
         recordCount: normalized.length,
         metadata,
-        sample: normalized.slice(0, 20)
+        sample: previewSample(normalized, 20)
       };
       if (includeDiscoveryFromBody(req.body)) {
         payload.discovery = scanRecords(normalized, {
@@ -303,9 +310,10 @@ router.post("/ingest/postgres/table/preview", async (req, res, next) => {
     const tableName = String(req.body.tableName ?? "");
     const schemaName = req.body.schemaName ? String(req.body.schemaName) : undefined;
     const limitInput = req.body.limit !== undefined ? Number(req.body.limit) : 50;
-    const limit = Number.isFinite(limitInput) ? Math.max(1, limitInput) : 50;
+    const limit = clampDbPreviewLimit(limitInput);
     if (!tableName) return res.status(400).json({ error: "Body parameter 'tableName' is required." });
     assertSafeIdentifier(tableName, "tableName");
+    if (schemaName) assertSafeIdentifier(schemaName, "schemaName");
 
     const schemaMapping =
       req.body.schemaMapping && typeof req.body.schemaMapping === "object" ? (req.body.schemaMapping as Record<string, string>) : undefined;
@@ -321,7 +329,7 @@ router.post("/ingest/postgres/table/preview", async (req, res, next) => {
         recordCount: normalized.length,
         createdDate: new Date()
       });
-      const payload: Record<string, unknown> = { preview: normalized, metadata };
+      const payload: Record<string, unknown> = { preview: previewSample(normalized, limit), metadata };
       if (includeDiscoveryFromBody(req.body)) {
         payload.discovery = scanRecords(normalized, {
           sourceType: "database",
@@ -351,7 +359,7 @@ router.post("/ingest/postgres/table/full", async (req, res, next) => {
       req.body.schemaMapping && typeof req.body.schemaMapping === "object" ? (req.body.schemaMapping as Record<string, string>) : undefined;
 
     const maxRecordsInput = req.body.maxRecords !== undefined ? Number(req.body.maxRecords) : undefined;
-    const maxRecords = maxRecordsInput !== undefined && Number.isFinite(maxRecordsInput) ? Math.max(1, maxRecordsInput) : undefined;
+    const maxRecords = clampIngestMaxRecords(maxRecordsInput);
 
     const job = await runIngestionJob("database", tableName, async () => {
       const connector = new PostgresConnector();
@@ -367,7 +375,7 @@ router.post("/ingest/postgres/table/full", async (req, res, next) => {
         if (!batch.length) break;
 
         const normalized = normalizeRecords(batch, { schemaMapping });
-        if (sample.length === 0) sample = normalized.slice(0, 20);
+        if (sample.length === 0) sample = previewSample(normalized, 20);
         total += batch.length;
 
         offset += batch.length;
@@ -393,7 +401,7 @@ router.post("/ingest/mysql/table/preview", async (req, res, next) => {
   try {
     const tableName = String(req.body.tableName ?? "");
     const limitInput = req.body.limit !== undefined ? Number(req.body.limit) : 50;
-    const limit = Number.isFinite(limitInput) ? Math.max(1, limitInput) : 50;
+    const limit = clampDbPreviewLimit(limitInput);
     if (!tableName) return res.status(400).json({ error: "Body parameter 'tableName' is required." });
     assertSafeIdentifier(tableName, "tableName");
 
@@ -411,7 +419,7 @@ router.post("/ingest/mysql/table/preview", async (req, res, next) => {
         recordCount: normalized.length,
         createdDate: new Date()
       });
-      res.json({ preview: normalized, metadata });
+      res.json({ preview: previewSample(normalized, limit), metadata });
     });
 
     if (job.status !== "success") return res.status(500).json(job);
@@ -432,7 +440,7 @@ router.post("/ingest/mysql/table/full", async (req, res, next) => {
       req.body.schemaMapping && typeof req.body.schemaMapping === "object" ? (req.body.schemaMapping as Record<string, string>) : undefined;
 
     const maxRecordsInput = req.body.maxRecords !== undefined ? Number(req.body.maxRecords) : undefined;
-    const maxRecords = maxRecordsInput !== undefined && Number.isFinite(maxRecordsInput) ? Math.max(1, maxRecordsInput) : undefined;
+    const maxRecords = clampIngestMaxRecords(maxRecordsInput);
 
     const job = await runIngestionJob("database", tableName, async () => {
       const connector = new MySQLConnector();
@@ -448,7 +456,7 @@ router.post("/ingest/mysql/table/full", async (req, res, next) => {
         if (!batch.length) break;
 
         const normalized = normalizeRecords(batch, { schemaMapping });
-        if (sample.length === 0) sample = normalized.slice(0, 20);
+        if (sample.length === 0) sample = previewSample(normalized, 20);
         total += batch.length;
         offset += batch.length;
       }
@@ -473,7 +481,7 @@ router.post("/ingest/mongodb/collection/preview", async (req, res, next) => {
   try {
     const collectionName = String(req.body.collectionName ?? "");
     const limitInput = req.body.limit !== undefined ? Number(req.body.limit) : 50;
-    const limit = Number.isFinite(limitInput) ? Math.max(1, limitInput) : 50;
+    const limit = clampDbPreviewLimit(limitInput);
     if (!collectionName) return res.status(400).json({ error: "Body parameter 'collectionName' is required." });
     assertSafeIdentifier(collectionName, "collectionName");
 
@@ -491,7 +499,7 @@ router.post("/ingest/mongodb/collection/preview", async (req, res, next) => {
         recordCount: normalized.length,
         createdDate: new Date()
       });
-      res.json({ preview: normalized, metadata });
+      res.json({ preview: previewSample(normalized, limit), metadata });
     });
 
     if (job.status !== "success") return res.status(500).json(job);
@@ -512,7 +520,7 @@ router.post("/ingest/mongodb/collection/full", async (req, res, next) => {
       req.body.schemaMapping && typeof req.body.schemaMapping === "object" ? (req.body.schemaMapping as Record<string, string>) : undefined;
 
     const maxRecordsInput = req.body.maxRecords !== undefined ? Number(req.body.maxRecords) : undefined;
-    const maxRecords = maxRecordsInput !== undefined && Number.isFinite(maxRecordsInput) ? Math.max(1, maxRecordsInput) : undefined;
+    const maxRecords = clampIngestMaxRecords(maxRecordsInput);
 
     const job = await runIngestionJob("database", collectionName, async () => {
       const connector = new MongoDBConnector();
@@ -528,7 +536,7 @@ router.post("/ingest/mongodb/collection/full", async (req, res, next) => {
         if (!batch.length) break;
 
         const normalized = normalizeRecords(batch, { schemaMapping });
-        if (sample.length === 0) sample = normalized.slice(0, 20);
+        if (sample.length === 0) sample = previewSample(normalized, 20);
         total += batch.length;
         offset += batch.length;
       }
@@ -556,7 +564,7 @@ router.post("/ingest/s3/ingest", async (req, res, next) => {
     const batchSizeInput = req.body.batchSize !== undefined ? Number(req.body.batchSize) : 1000;
     const batchSize = Number.isFinite(batchSizeInput) ? Math.max(1, batchSizeInput) : 1000;
     const maxRecordsInput = req.body.maxRecords !== undefined ? Number(req.body.maxRecords) : undefined;
-    const maxRecords = maxRecordsInput !== undefined && Number.isFinite(maxRecordsInput) ? Math.max(1, maxRecordsInput) : undefined;
+    const maxRecords = clampIngestMaxRecords(maxRecordsInput);
 
     if (!bucket || !key) {
       return res.status(400).json({ error: "Body parameters 'bucket' and 'key' are required." });
@@ -571,7 +579,7 @@ router.post("/ingest/s3/ingest", async (req, res, next) => {
       const result = await ingestS3ObjectBatches({ bucket, key, maxRecords, batchSize }, async (batch) => {
         total += batch.length;
         const normalized = normalizeRecords(batch, { schemaMapping });
-        if (sample.length === 0) sample = normalized.slice(0, 20);
+        if (sample.length === 0) sample = previewSample(normalized, 20);
       });
 
       const metadata = buildMetadata({

@@ -2,12 +2,24 @@ export type AuditAction =
   | "discovery_scan"
   | "classification"
   | "profiling"
+  | "risk_analysis"
+  | "compliance_intelligence"
+  | "risk_query"
   | "mapping_ingest"
   | "catalog_upsert"
   | "search_query"
   | "dashboard_query"
+  | "remediation_create"
+  | "remediation_update"
+  | "remediation_query"
+  | "report_generate"
+  | "report_query"
+  | "auth_login"
+  | "user_manage"
   | "api_failure"
-  | "scan_failed";
+  | "scan_failed"
+  | "alert_query"
+  | "alert_delivery";
 
 export type AuditStatus = "success" | "failure" | "partial";
 

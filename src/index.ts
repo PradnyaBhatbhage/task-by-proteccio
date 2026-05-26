@@ -1,14 +1,24 @@
 import app from "./app";
+import { bootstrapAuth } from "./auth/bootstrap";
+import { assertSecurityConfiguration } from "./config/security";
 import { env } from "./config/env";
 import { logger } from "./utils/logger";
 import { startScheduler } from "./services/ingestion.service";
+import { startAlertScheduler, startAlertWorker } from "./alerting";
+import { startReportWorker } from "./reporting";
 import { PostgresConnector } from "./connectors/postgres.connector";
 import { normalizeRecords } from "./services/normalizer";
 import { buildMetadata } from "./services/metadata";
 
 const runningOnVercel = Boolean(process.env.VERCEL);
 
+assertSecurityConfiguration();
+
 if (!runningOnVercel) {
+  startAlertWorker();
+  startAlertScheduler();
+  startReportWorker();
+
   startScheduler(async () => {
     try {
       if (!env.POSTGRES_USER || !env.POSTGRES_PASSWORD || !env.POSTGRES_DB) {
@@ -50,9 +60,14 @@ if (!runningOnVercel) {
     }
   });
 
-  app.listen(Number(env.PORT), () => {
-    logger.info(`Ingestion service listening on port ${env.PORT}`);
-    logger.info(`Dashboard UI: http://localhost:${env.PORT}/dashboard/`);
+  void bootstrapAuth().then(() => {
+    app.listen(Number(env.PORT), () => {
+      logger.info(`Ingestion service listening on port ${env.PORT}`);
+      logger.info(`Dashboard UI: http://localhost:${env.PORT}/dashboard/`);
+      if (env.RBAC_ENABLED) {
+        logger.info("RBAC enabled (JWT). POST /api/auth/login to obtain a token.");
+      }
+    });
   });
 }
 

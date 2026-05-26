@@ -3,14 +3,68 @@ import type { DiscoveryScanResult } from "../discovery";
 import { mappingRegistry, stableDatasetId, stableSystemId } from "../mapping";
 import { buildProfilingReport, type ProfilingOptions } from "../profiling";
 import { assessRisk, mergeExposureHintsForDiscovery, type RiskExposureHints } from "../risk";
+import type { RiskLevel } from "../risk/types";
+import { invalidateDashboardCache } from "../services/dashboard-analytics-cache";
 import type { CatalogQuery, GovernanceDatasetSnapshot } from "./types";
 
 function nowIso(): string {
   return new Date().toISOString();
 }
 
+function sourceKey(trace: GovernanceDatasetSnapshot["trace"]): string {
+  return `${trace.sourceType}::${trace.sourceName}`;
+}
+
 export class GovernanceCatalog {
   private readonly byDatasetId = new Map<string, GovernanceDatasetSnapshot>();
+  private readonly byRiskLevel = new Map<RiskLevel, Set<string>>();
+  private readonly bySourceType = new Map<string, Set<string>>();
+  private readonly bySourceKey = new Map<string, Set<string>>();
+  private _revision = 0;
+
+  /** Bumps when catalog content changes (used for aggregate cache invalidation). */
+  get revision(): number {
+    return this._revision;
+  }
+
+  get size(): number {
+    return this.byDatasetId.size;
+  }
+
+  private bumpRevision(): void {
+    this._revision += 1;
+    invalidateDashboardCache();
+  }
+
+  private indexAdd(snap: GovernanceDatasetSnapshot): void {
+    this.addToSet(this.byRiskLevel, snap.riskLevel, snap.datasetId);
+    this.addToSet(this.bySourceType, snap.trace.sourceType, snap.datasetId);
+    this.addToSet(this.bySourceKey, sourceKey(snap.trace), snap.datasetId);
+  }
+
+  private indexRemove(snap: GovernanceDatasetSnapshot): void {
+    this.removeFromSet(this.byRiskLevel, snap.riskLevel, snap.datasetId);
+    this.removeFromSet(this.bySourceType, snap.trace.sourceType, snap.datasetId);
+    this.removeFromSet(this.bySourceKey, sourceKey(snap.trace), snap.datasetId);
+  }
+
+  private addToSet(map: Map<string, Set<string>>, key: string, id: string): void {
+    const set = map.get(key) ?? new Set();
+    set.add(id);
+    map.set(key, set);
+  }
+
+  private removeFromSet(map: Map<string, Set<string>>, key: string, id: string): void {
+    const set = map.get(key);
+    if (!set) return;
+    set.delete(id);
+    if (set.size === 0) map.delete(key);
+  }
+
+  private idsForRiskLevel(level: RiskLevel): string[] | undefined {
+    const set = this.byRiskLevel.get(level);
+    return set ? [...set] : undefined;
+  }
 
   upsertFromScan(input: {
     discovery: DiscoveryScanResult;
@@ -24,16 +78,19 @@ export class GovernanceCatalog {
     const datasetId = stableDatasetId(systemId, discovery.trace.entityName);
 
     const profile = buildProfilingReport(discovery, classification, records, profilingOptions);
-    const mergedHints = mergeExposureHintsForDiscovery(discovery, exposureHints);
-    const risk = assessRisk(discovery, classification, mergedHints);
+    const mergedHints = mergeExposureHintsForDiscovery(discovery, exposureHints, profile);
+    const risk = assessRisk(discovery, classification, mergedHints, profile);
 
     const mapped = mappingRegistry.listDatasets().some((d) => d.id === datasetId);
+
+    const prev = this.byDatasetId.get(datasetId);
+    if (prev) this.indexRemove(prev);
 
     const snap: GovernanceDatasetSnapshot = {
       datasetId,
       systemId,
       trace: discovery.trace,
-      createdAt: this.byDatasetId.get(datasetId)?.createdAt ?? nowIso(),
+      createdAt: prev?.createdAt ?? nowIso(),
       updatedAt: nowIso(),
       profile,
       risk,
@@ -46,17 +103,25 @@ export class GovernanceCatalog {
     };
 
     this.byDatasetId.set(datasetId, snap);
+    this.indexAdd(snap);
+    this.bumpRevision();
     return snap;
   }
 
   /** Refresh `mapped` flags from the current mapping registry (in-memory). */
   refreshMappedFlags(): void {
     const ids = new Set(mappingRegistry.listDatasets().map((d) => d.id));
+    let changed = false;
     for (const [id, snap] of this.byDatasetId) {
-      snap.mapped = ids.has(id);
-      snap.updatedAt = nowIso();
-      this.byDatasetId.set(id, snap);
+      const next = ids.has(id);
+      if (snap.mapped !== next) {
+        snap.mapped = next;
+        snap.updatedAt = nowIso();
+        this.byDatasetId.set(id, snap);
+        changed = true;
+      }
     }
+    if (changed) this.bumpRevision();
   }
 
   get(datasetId: string): GovernanceDatasetSnapshot | undefined {
@@ -75,10 +140,22 @@ export class GovernanceCatalog {
     let rows = this.list();
 
     if (q.riskLevel) {
-      rows = rows.filter((r) => r.riskLevel === q.riskLevel);
+      const ids = this.idsForRiskLevel(q.riskLevel);
+      if (ids) {
+        const idSet = new Set(ids);
+        rows = rows.filter((r) => idSet.has(r.datasetId));
+      } else {
+        rows = [];
+      }
     }
     if (q.sourceType) {
-      rows = rows.filter((r) => r.trace.sourceType === q.sourceType);
+      const set = this.bySourceType.get(q.sourceType);
+      if (set) {
+        const idSet = set;
+        rows = rows.filter((r) => idSet.has(r.datasetId));
+      } else {
+        rows = [];
+      }
     }
     if (q.sourceNameContains) {
       const needle = q.sourceNameContains.toLowerCase();
@@ -105,6 +182,10 @@ export class GovernanceCatalog {
 
   clear(): void {
     this.byDatasetId.clear();
+    this.byRiskLevel.clear();
+    this.bySourceType.clear();
+    this.bySourceKey.clear();
+    this.bumpRevision();
   }
 }
 

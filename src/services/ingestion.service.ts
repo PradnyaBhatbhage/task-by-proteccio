@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { env } from "../config/env";
 import { IngestionJob } from "../types";
 import { logger } from "../utils/logger";
+import { evaluateFailedScan } from "../alerting";
 
 const ingestionHistory: IngestionJob[] = [];
 
@@ -41,6 +42,12 @@ export async function runIngestionJob(
 
   if (lastError) {
     logger.error({ sourceType, sourceName, lastError }, "Ingestion job failed after retries");
+    evaluateFailedScan({
+      subjectKey: `ingestion:${job.id}`,
+      source: `${sourceType}:${sourceName}`,
+      errorMessage: job.message,
+      scanKind: "ingestion"
+    });
   } else {
     logger.info({ sourceType, sourceName }, "Ingestion job completed");
   }

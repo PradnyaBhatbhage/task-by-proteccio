@@ -1,10 +1,7 @@
 import { Router } from "express";
 import { auditTrail } from "../audit";
-import { governanceCatalog } from "../catalog";
-import {
-  buildDashboardAnalytics,
-  type DashboardAnalytics
-} from "../services/dashboard-analytics.service";
+import { getDashboardAnalytics } from "../services/dashboard-analytics-cache";
+import type { DashboardAnalytics } from "../services/dashboard-analytics.service";
 
 const router = Router();
 
@@ -19,8 +16,7 @@ function auditDashboard(source: string, started: number, meta: Record<string, un
 }
 
 function refreshAndBuild(): DashboardAnalytics {
-  governanceCatalog.refreshMappedFlags();
-  return buildDashboardAnalytics();
+  return getDashboardAnalytics();
 }
 
 /**
@@ -126,6 +122,100 @@ router.get("/dashboard/metrics/high-risk-sources", (_req, res) => {
   });
 });
 
+/** GET /api/dashboard/metrics/sources-count — total unique scanned sources */
+router.get("/dashboard/metrics/sources-count", (_req, res) => {
+  const started = Date.now();
+  const a = refreshAndBuild();
+  auditDashboard("api:dashboard/metrics/sources-count", started, {});
+  return res.json({
+    generatedAt: a.generatedAt,
+    totalScannedSources: a.totalScannedSources
+  });
+});
+
+/** GET /api/dashboard/metrics/high-risk-datasets */
+router.get("/dashboard/metrics/high-risk-datasets", (_req, res) => {
+  const started = Date.now();
+  const a = refreshAndBuild();
+  auditDashboard("api:dashboard/metrics/high-risk-datasets", started, {});
+  return res.json({
+    generatedAt: a.generatedAt,
+    highRiskDatasets: a.highRiskDatasets
+  });
+});
+
+/** GET /api/dashboard/metrics/compliance */
+router.get("/dashboard/metrics/compliance", (_req, res) => {
+  const started = Date.now();
+  const a = refreshAndBuild();
+  auditDashboard("api:dashboard/metrics/compliance", started, {});
+  return res.json({
+    generatedAt: a.generatedAt,
+    complianceViolations: a.complianceViolations
+  });
+});
+
+/** GET /api/dashboard/metrics/heatmap — source-wise risk heatmap matrix */
+router.get("/dashboard/metrics/heatmap", (_req, res) => {
+  const started = Date.now();
+  const a = refreshAndBuild();
+  auditDashboard("api:dashboard/metrics/heatmap", started, {});
+  return res.json({
+    generatedAt: a.generatedAt,
+    sourceRiskHeatmap: a.sourceRiskHeatmap
+  });
+});
+
+/** GET /api/dashboard/metrics/remediation — remediation status and open vs resolved */
+router.get("/dashboard/metrics/remediation", (_req, res) => {
+  const started = Date.now();
+  const a = refreshAndBuild();
+  auditDashboard("api:dashboard/metrics/remediation", started, {});
+  return res.json({
+    generatedAt: a.generatedAt,
+    remediationStatus: a.remediationStatus
+  });
+});
+
+/** GET /api/dashboard/metrics/exposure — most exposed systems */
+router.get("/dashboard/metrics/exposure", (_req, res) => {
+  const started = Date.now();
+  const a = refreshAndBuild();
+  auditDashboard("api:dashboard/metrics/exposure", started, {});
+  return res.json({
+    generatedAt: a.generatedAt,
+    mostExposedSystems: a.mostExposedSystems
+  });
+});
+
+/**
+ * GET /api/dashboard/governance
+ * Single payload aligned with data governance dashboard requirements.
+ */
+router.get("/dashboard/governance", (_req, res) => {
+  const started = Date.now();
+  const a = refreshAndBuild();
+  auditDashboard("api:dashboard/governance", started, {
+    totalScannedSources: a.totalScannedSources,
+    highRiskDatasetCount: a.highRiskDatasets.count
+  });
+  return res.json({
+    generatedAt: a.generatedAt,
+    totalScannedSources: a.totalScannedSources,
+    totalSensitiveRecords: a.totalSensitiveRecords,
+    totalScannedRecords: a.totalScannedRecords,
+    highRiskDatasets: a.highRiskDatasets,
+    complianceViolations: a.complianceViolations,
+    riskDistribution: a.riskDistribution,
+    sourceRiskHeatmap: a.sourceRiskHeatmap,
+    classificationDistribution: a.classificationDistribution,
+    remediationStatus: a.remediationStatus,
+    issues: a.remediationStatus.openVsResolved,
+    mostExposedSystems: a.mostExposedSystems,
+    sourceWiseBreakdown: a.sourceWiseBreakdown
+  });
+});
+
 /**
  * GET /api/dashboard/summary
  * Legacy aggregate shape for existing clients (same underlying analytics as `/dashboard/analytics`).
@@ -149,6 +239,7 @@ router.get("/dashboard/summary", (_req, res) => {
   const payload = {
     generatedAt: a.generatedAt,
     totals: {
+      totalScannedSources: a.totalScannedSources,
       totalScannedRecords: a.totalScannedRecords,
       totalSensitiveRecords: a.totalSensitiveRecords,
       datasetsInCatalog: a.catalogAndInventoryCounts.datasetsInCatalog,
@@ -180,6 +271,11 @@ router.get("/dashboard/summary", (_req, res) => {
     },
     sourceBreakdown,
     /** Extended fields aligned with `/dashboard/analytics` (non-breaking for clients that ignore unknown keys). */
+    highRiskDatasets: a.highRiskDatasets,
+    complianceViolations: a.complianceViolations,
+    sourceRiskHeatmap: a.sourceRiskHeatmap,
+    remediationStatus: a.remediationStatus,
+    mostExposedSystems: a.mostExposedSystems,
     classificationDistribution: a.classificationDistribution,
     profilingStatistics: a.profilingStatistics,
     mappingRelationships: a.mappingRelationships,

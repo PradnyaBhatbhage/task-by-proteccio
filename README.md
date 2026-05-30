@@ -236,8 +236,8 @@ Body:
 
 ```json
 {
-  "email": "viewer@local",
-  "password": "Viewer1!"
+  "email": "superadmin@proteccio.app",
+  "password": "SuperAdmin1!"
 }
 ```
 
@@ -285,6 +285,16 @@ Authorization: Bearer <API_KEY>
 
 JWT is recommended for normal testing.
 
+### Deployed Evaluator Login
+
+Use this Supabase-backed evaluator account for the deployed frontend and backend dashboard:
+
+```text
+Email: superadmin@proteccio.app
+Password: SuperAdmin1!
+Role: super_admin
+```
+
 ## Dashboard Usage
 
 ### Modern React Frontend
@@ -316,6 +326,13 @@ http://localhost:3000/dashboard/
 ```
 
 Login in the dashboard with:
+
+```text
+superadmin@proteccio.app
+SuperAdmin1!
+```
+
+For local-only seeded demo mode, you can also use:
 
 ```text
 viewer@local
@@ -559,7 +576,7 @@ When email is not configured and in-app notifications are enabled, default alert
 
 ## Sample Dataset Registration
 
-Use this to populate dashboard data quickly after login with `privacy@local`.
+Use this to populate dashboard data quickly after login with `superadmin@proteccio.app` in production or `privacy@local` in local seeded demo mode.
 
 ```http
 POST /api/catalog/register

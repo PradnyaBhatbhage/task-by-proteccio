@@ -334,8 +334,8 @@ const paths = {
               type: "object",
               required: ["email", "password"],
               properties: {
-                email: { type: "string", example: "viewer@local" },
-                password: { type: "string", example: "Viewer1!" }
+                email: { type: "string", example: "superadmin@proteccio.app" },
+                password: { type: "string", example: "SuperAdmin1!" }
               }
             }
           }
@@ -1699,8 +1699,8 @@ const collection = {
       name: "Auth",
       item: [
         pmItem("POST login", "POST", "/api/auth/login", {
-          email: "viewer@local",
-          password: "Viewer1!"
+          email: "superadmin@proteccio.app",
+          password: "SuperAdmin1!"
         }, "No auth. Returns JWT.", { noAuth: true }),
         pmItem("POST signup", "POST", "/api/auth/signup", {
           email: "new.user@example.com",

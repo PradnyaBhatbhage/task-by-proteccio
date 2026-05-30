@@ -142,11 +142,11 @@
                 "properties": {
                   "email": {
                     "type": "string",
-                    "example": "viewer@local"
+                    "example": "superadmin@proteccio.app"
                   },
                   "password": {
                     "type": "string",
-                    "example": "Viewer1!"
+                    "example": "SuperAdmin1!"
                   }
                 }
               }

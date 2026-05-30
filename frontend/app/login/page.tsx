@@ -24,7 +24,7 @@ type AuthResponse = {
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("superadmin@local");
+  const [email, setEmail] = useState("superadmin@proteccio.app");
   const [password, setPassword] = useState("SuperAdmin1!");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -65,7 +65,7 @@ export default function LoginPage() {
             <CardDescription>Use a seeded demo user locally or a Supabase-authenticated account in production.</CardDescription>
           </CardHeader>
           <form onSubmit={login} className="space-y-4">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="superadmin@local" />
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="superadmin@proteccio.app" />
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" />
             <Button disabled={loading} className="w-full">
               {loading ? "Signing in..." : "Sign in"}

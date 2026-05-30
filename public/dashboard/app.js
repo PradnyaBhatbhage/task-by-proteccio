@@ -160,7 +160,7 @@ async function loadCurrentUser() {
 
 async function login() {
   setBanner("", "");
-  const email = document.getElementById("loginEmail")?.value.trim() || "superadmin@local";
+  const email = document.getElementById("loginEmail")?.value.trim() || "superadmin@proteccio.app";
   const password = document.getElementById("loginPassword")?.value || "SuperAdmin1!";
 
   let res;
@@ -212,7 +212,7 @@ async function forgotPassword() {
   const email =
     document.getElementById("signupEmail")?.value.trim() ||
     document.getElementById("loginEmail")?.value.trim() ||
-    "viewer@local";
+    "superadmin@proteccio.app";
   try {
     const res = await apiFetch("/api/auth/forgot-password", {
       method: "POST",
@@ -1308,7 +1308,7 @@ async function loadDashboard() {
     setDashboardState("error", "Unauthorized. Login or provide an API key.");
     setBanner(
       "error",
-      "Unauthorized (401). Login with superadmin@local / SuperAdmin1! or paste a valid API key, then click Refresh."
+      "Unauthorized (401). Login with superadmin@proteccio.app / SuperAdmin1! or paste a valid API key, then click Refresh."
     );
     return;
   }
@@ -1383,7 +1383,7 @@ function init() {
   const saved = sessionStorage.getItem(API_KEY_STORAGE_KEY);
   const input = document.getElementById("apiKey");
   if (input && saved) input.value = saved;
-  setLoginState(sessionStorage.getItem(USER_STORAGE_KEY) || "superadmin@local");
+  setLoginState(sessionStorage.getItem(USER_STORAGE_KEY) || "superadmin@proteccio.app");
   const pass = document.getElementById("loginPassword");
   if (pass && !pass.value) pass.value = "SuperAdmin1!";
   initNavigationState();

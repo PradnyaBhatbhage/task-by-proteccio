@@ -29,6 +29,9 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+.vercel/
+frontend/.vercel/
 
 # TypeScript cache
 *.tsbuildinfo
+.vercel

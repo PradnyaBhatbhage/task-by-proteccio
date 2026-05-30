@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { logger } from "../utils/logger";
+import { persistAuditLog } from "../supabase/governance-persistence";
 import type { AuditAction, AuditLogEntry, AuditStatus } from "./types";
 
 const MAX_ENTRIES = 5000;
@@ -53,6 +54,7 @@ class AuditTrail {
       "audit"
     );
 
+    void persistAuditLog(entry);
     return entry;
   }
 

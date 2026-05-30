@@ -23,7 +23,8 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   "reporting:write",
   "alerts:read",
   "alerts:write",
-  "users:manage"
+  "users:manage",
+  "workflow:execute"
 ] as const;
 
 const READ_ONLY: Permission[] = [
@@ -60,7 +61,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "reporting:read",
     "reporting:write",
     "alerts:read",
-    "alerts:write"
+    "alerts:write",
+    "workflow:execute"
   ],
   security_analyst: [
     "ingestion:read",
@@ -80,7 +82,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "dashboard:read",
     "audit:read",
     "reporting:read",
-    "alerts:read"
+    "alerts:read",
+    "workflow:execute"
   ],
   auditor: [
     ...READ_ONLY,
@@ -109,7 +112,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "reporting:read",
     "reporting:write",
     "alerts:read",
-    "alerts:write"
+    "alerts:write",
+    "workflow:execute"
   ]
 };
 

@@ -29,7 +29,7 @@ export function authorize(req: Request, res: Response, next: NextFunction): void
   if (permission === undefined) {
     res.status(403).json({
       error: "Forbidden",
-      message: "No permission mapping for this route"
+      message: "Route is not available for this role"
     });
     return;
   }
@@ -37,8 +37,7 @@ export function authorize(req: Request, res: Response, next: NextFunction): void
   if (!roleHasPermission(principal.role, permission)) {
     res.status(403).json({
       error: "Forbidden",
-      message: `Role '${principal.role}' lacks permission '${permission}'`,
-      requiredPermission: permission
+      message: "Insufficient permissions"
     });
     return;
   }

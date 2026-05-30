@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --page-bg: #070b12;
+  --page-fg: #e5edf7;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --surface: rgba(15, 23, 42, 0.72);
+  --surface-solid: #0f172a;
+  --surface-muted: rgba(15, 23, 42, 0.52);
+  --border: rgba(148, 163, 184, 0.18);
+  --accent-soft: rgba(59, 130, 246, 0.16);
+  --accent-text: #bfdbfe;
+  --hero-left: rgba(59, 130, 246, 0.22);
+  --hero-right: rgba(168, 85, 247, 0.16);
+}
+
+:root.light {
+  color-scheme: light;
+  --page-bg: #f5f7fb;
+  --page-fg: #0f172a;
+  --text: #0f172a;
+  --muted: #526070;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-solid: #ffffff;
+  --surface-muted: rgba(241, 245, 249, 0.9);
+  --border: rgba(71, 85, 105, 0.24);
+  --accent-soft: rgba(37, 99, 235, 0.14);
+  --accent-text: #1d4ed8;
+  --hero-left: rgba(37, 99, 235, 0.12);
+  --hero-right: rgba(124, 58, 237, 0.1);
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, var(--hero-left), transparent 34rem),
+    radial-gradient(circle at top right, var(--hero-right), transparent 28rem),
+    var(--page-bg);
+  color: var(--page-fg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(96, 165, 250, 0.35);
+}
+
+.glass-panel {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(18px);
+}
+
+:root.light .glass-panel {
+  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.12);
+}
+
+:root.light .text-white {
+  color: var(--text) !important;
+}
+
+:root.light .text-slate-100,
+:root.light .text-slate-200,
+:root.light .text-slate-300,
+:root.light .text-slate-400,
+:root.light .text-slate-500 {
+  color: var(--muted) !important;
+}
+
+:root.light .bg-slate-950\/45,
+:root.light .bg-slate-950\/60,
+:root.light .bg-slate-950\/70,
+:root.light .bg-slate-950\/80,
+:root.light .bg-slate-900,
+:root.light .bg-slate-900\/70,
+:root.light .bg-slate-800\/70,
+:root.light .bg-slate-800\/80 {
+  background-color: var(--surface-muted) !important;
+}
+
+:root.light .bg-slate-800 {
+  background-color: #e2e8f0 !important;
+}
+
+:root.light .bg-blue-500\/15,
+:root.light .bg-blue-400\/10 {
+  background-color: rgba(37, 99, 235, 0.14) !important;
+}
+
+:root.light .bg-blue-500\/15.text-blue-100,
+:root.light .text-blue-100,
+:root.light .text-blue-200 {
+  color: #1d4ed8 !important;
+}
+
+:root.light .border-slate-700,
+:root.light .border-slate-800,
+:root.light .ring-slate-700 {
+  border-color: var(--border) !important;
+}
+
+:root.light .ring-blue-400\/20 {
+  --tw-ring-color: rgba(37, 99, 235, 0.28) !important;
+}
+
+:root.light a.text-slate-400,
+:root.light button.text-slate-400 {
+  color: #334155 !important;
+}
+
+:root.light a.text-slate-400:hover,
+:root.light button.text-slate-400:hover {
+  color: #0f172a !important;
+  background-color: rgba(226, 232, 240, 0.9) !important;
+}
+
+:root.light .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+:root.light .hover\:bg-slate-800\/70:hover,
+:root.light .hover\:bg-slate-800\/80:hover {
+  background-color: rgba(226, 232, 240, 0.9) !important;
+}
+
+:root.light [aria-pressed="true"] {
+  color: #1d4ed8 !important;
+}
+
+:root.light input,
+:root.light select,
+:root.light textarea {
+  color: var(--text);
+  background-color: rgba(255, 255, 255, 0.9);
+  border-color: var(--border);
+}

@@ -9,6 +9,11 @@ import type {
   NotificationChannel,
   NotificationQuery
 } from "./types";
+import {
+  persistAlertEvent,
+  persistEmailOutbox,
+  persistNotification
+} from "../supabase/governance-persistence";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -37,6 +42,7 @@ export class AlertStore {
       dedupeKey
     };
     this.alerts.set(id, event);
+    void persistAlertEvent(event);
     return event;
   }
 
@@ -45,6 +51,7 @@ export class AlertStore {
     if (!a) return;
     a.status = "suppressed";
     this.alerts.set(id, a);
+    void persistAlertEvent(a);
   }
 
   markQueued(id: string): void {
@@ -52,6 +59,7 @@ export class AlertStore {
     if (!a) return;
     a.status = "queued";
     this.alerts.set(id, a);
+    void persistAlertEvent(a);
   }
 
   markDelivered(id: string): void {
@@ -60,6 +68,7 @@ export class AlertStore {
     a.status = "delivered";
     a.deliveredAt = nowIso();
     this.alerts.set(id, a);
+    void persistAlertEvent(a);
   }
 
   markFailed(id: string): void {
@@ -67,6 +76,7 @@ export class AlertStore {
     if (!a) return;
     a.status = "failed";
     this.alerts.set(id, a);
+    void persistAlertEvent(a);
   }
 
   get(id: string): AlertEvent | undefined {
@@ -101,6 +111,7 @@ export class AlertStore {
       datasetId: alert.datasetId
     };
     this.notifications.set(n.id, n);
+    void persistNotification(n);
     return n;
   }
 
@@ -129,6 +140,7 @@ export class AlertStore {
     if (!n) return undefined;
     n.read = true;
     this.notifications.set(id, n);
+    void persistNotification(n);
     return n;
   }
 
@@ -138,6 +150,7 @@ export class AlertStore {
       if (!n.read) {
         n.read = true;
         count += 1;
+        void persistNotification(n);
       }
     }
     return count;
@@ -151,6 +164,7 @@ export class AlertStore {
     };
     this.emailOutbox.unshift(row);
     if (this.emailOutbox.length > 500) this.emailOutbox.length = 500;
+    void persistEmailOutbox(row);
     return row;
   }
 

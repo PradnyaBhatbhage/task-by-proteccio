@@ -5,6 +5,7 @@ import { buildProfilingReport, type ProfilingOptions } from "../profiling";
 import { assessRisk, mergeExposureHintsForDiscovery, type RiskExposureHints } from "../risk";
 import type { RiskLevel } from "../risk/types";
 import { invalidateDashboardCache } from "../services/dashboard-analytics-cache";
+import { persistCatalogSnapshot } from "../supabase/governance-persistence";
 import type { CatalogQuery, GovernanceDatasetSnapshot } from "./types";
 
 function nowIso(): string {
@@ -46,6 +47,14 @@ export class GovernanceCatalog {
     this.removeFromSet(this.byRiskLevel, snap.riskLevel, snap.datasetId);
     this.removeFromSet(this.bySourceType, snap.trace.sourceType, snap.datasetId);
     this.removeFromSet(this.bySourceKey, sourceKey(snap.trace), snap.datasetId);
+  }
+
+  restore(snapshot: GovernanceDatasetSnapshot): void {
+    const prev = this.byDatasetId.get(snapshot.datasetId);
+    if (prev) this.indexRemove(prev);
+    this.byDatasetId.set(snapshot.datasetId, snapshot);
+    this.indexAdd(snapshot);
+    this.bumpRevision();
   }
 
   private addToSet(map: Map<string, Set<string>>, key: string, id: string): void {
@@ -105,6 +114,7 @@ export class GovernanceCatalog {
     this.byDatasetId.set(datasetId, snap);
     this.indexAdd(snap);
     this.bumpRevision();
+    void persistCatalogSnapshot(snap);
     return snap;
   }
 

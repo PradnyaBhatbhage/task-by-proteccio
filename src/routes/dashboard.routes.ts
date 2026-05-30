@@ -30,6 +30,7 @@ router.get("/dashboard/analytics", (_req, res) => {
     datasetsInCatalog: analytics.catalogAndInventoryCounts.datasetsInCatalog,
     mappedFields: analytics.catalogAndInventoryCounts.mappedFields
   });
+  res.setHeader("Cache-Control", "private, max-age=5, stale-while-revalidate=25");
   return res.json(analytics);
 });
 

@@ -19,6 +19,7 @@ function section(
 
 function titleForType(reportType: ReportType): string {
   const labels: Record<ReportType, string> = {
+    discovery: "Discovery Report",
     privacy_risk: "Privacy Risk Report",
     compliance: "Compliance Report",
     source_discovery: "Source-wise Discovery Report",
@@ -111,6 +112,33 @@ function buildSourceDiscoverySections(ctx: ReportBuildContext): ReportSection[] 
   ];
 }
 
+function buildDiscoverySections(ctx: ReportBuildContext): ReportSection[] {
+  const { analytics, catalogRows: rows } = ctx;
+  const datasets = rows.map((r) => ({
+    datasetId: r.datasetId,
+    sourceType: r.trace.sourceType,
+    sourceName: r.trace.sourceName,
+    entityName: r.trace.entityName,
+    scannedRecords: r.totalRecords,
+    sensitiveRecords: r.sensitiveRecordCount,
+    discoveryCategoryTotals: r.discoveryCategoryTotals,
+    riskLevel: r.riskLevel,
+    updatedAt: r.updatedAt
+  }));
+
+  return [
+    section("discovery_overview", "Discovery Overview", {
+      totalScannedRecords: analytics.totalScannedRecords,
+      totalSensitiveRecords: analytics.totalSensitiveRecords,
+      datasetsWithDetections: analytics.discoveryStatistics.catalogDatasetsWithDetections,
+      catalogCategoryTotals: analytics.discoveryStatistics.catalogCategoryTotals,
+      mappedFieldRowsByCategory: analytics.discoveryStatistics.mappedFieldRowsByCategory
+    }),
+    section("dataset_findings", "Dataset Discovery Findings", datasets),
+    section("source_breakdown", "Source-wise Discovery Breakdown", Object.values(analytics.sourceWiseBreakdown))
+  ];
+}
+
 function buildClassificationSections(ctx: ReportBuildContext): ReportSection[] {
   const { analytics } = ctx;
   const catalogLabels = Object.entries(analytics.classificationDistribution.catalogLabelTotals).map(
@@ -178,6 +206,7 @@ function buildExecutiveSections(ctx: ReportBuildContext): ReportSection[] {
 }
 
 const BUILDERS: Record<ReportType, (ctx: ReportBuildContext) => ReportSection[]> = {
+  discovery: buildDiscoverySections,
   privacy_risk: buildPrivacyRiskSections,
   compliance: buildComplianceSections,
   source_discovery: buildSourceDiscoverySections,
@@ -187,6 +216,8 @@ const BUILDERS: Record<ReportType, (ctx: ReportBuildContext) => ReportSection[]>
 };
 
 const SUMMARIES: Record<ReportType, (analytics: DashboardAnalytics) => string> = {
+  discovery: (a) =>
+    `${a.discoveryStatistics.catalogDatasetsWithDetections} datasets with detections; ${a.totalSensitiveRecords} sensitive records found across ${a.totalScannedRecords} scanned records.`,
   privacy_risk: (a) =>
     `${a.highRiskDatasets.count} high/critical datasets across ${a.totalScannedSources} sources; ${a.totalSensitiveRecords} sensitive records identified.`,
   compliance: (a) =>

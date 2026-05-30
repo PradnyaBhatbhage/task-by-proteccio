@@ -7,6 +7,7 @@ It covers:
 - **Week 1:** Data ingestion from databases, cloud storage, files, and APIs.
 - **Week 2:** Discovery, classification, mapping, lineage, profiling, search, dashboard metrics, and audit logs.
 - **Week 3:** Privacy risk analysis, compliance intelligence, remediation workflows, RBAC, alerting, reporting, and governance dashboard APIs.
+- **Week 4:** Integrated product prototype with source onboarding, Supabase-ready persistence, live dashboards, frontend workflows, and deployment readiness.
 
 ## Features
 
@@ -22,6 +23,8 @@ It covers:
 - JWT authentication, RBAC, API key fallback, and route-level permission checks.
 - Alerting for critical discoveries, compliance violations, failed scans, high-risk datasets, and overdue remediation.
 - Report generation and download in JSON, CSV, and PDF.
+- Week 4 frontend workflow shell for auth, source management, discovery, mapping, profiling, governance, search, reporting, and real-time dashboard updates.
+- Optional Supabase REST persistence for source registry and platform events.
 
 ## Tech Stack
 
@@ -59,7 +62,9 @@ src/
   services/       Ingestion, dashboard analytics, normalization, metadata
   utils/          Logging, security helpers, SSRF protection
 public/dashboard/ Static governance dashboard UI
+frontend/         Next.js + React + Tailwind frontend application
 openapi/          OpenAPI specification
+supabase/         SQL schema for Week 4 Supabase tables and realtime events
 ```
 
 ## Prerequisites
@@ -95,10 +100,95 @@ JWT_SECRET=proteccio_local_jwt_secret_12345
 SEED_DEFAULT_USERS=true
 ```
 
+If `JWT_SECRET` is omitted in development, the server uses the same demo-only local secret so the dashboard login works immediately. Production still fails fast unless real Supabase Auth, `JWT_SECRET`, or `API_KEY` settings are provided.
+
+Week 4 Supabase setup:
+
+1. Create a Supabase project.
+2. Run `supabase/schema.sql` in the Supabase SQL editor.
+3. Add these values to `.env`:
+
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_PROFILE_TABLE=proteccio_profiles
+SUPABASE_SOURCE_TABLE=proteccio_sources
+SUPABASE_DISCOVERY_TABLE=proteccio_discovery_runs
+SUPABASE_FILE_TABLE=proteccio_uploaded_files
+SUPABASE_CATALOG_TABLE=proteccio_catalog_snapshots
+SUPABASE_MAPPING_TABLE=proteccio_mapping_inventory
+SUPABASE_REMEDIATION_TABLE=proteccio_remediation_tickets
+SUPABASE_REPORT_TABLE=proteccio_reports
+SUPABASE_AUDIT_TABLE=proteccio_audit_logs
+SUPABASE_ALERT_TABLE=proteccio_alerts
+SUPABASE_NOTIFICATION_TABLE=proteccio_notifications
+SUPABASE_WORKFLOW_TABLE=proteccio_workflow_runs
+SUPABASE_EVENT_TABLE=proteccio_events
+SUPABASE_STORAGE_BUCKET=proteccio-uploads
+SUPABASE_REQUIRED=false
+```
+
+Set `SUPABASE_REQUIRED=true` in production when the deployment must fail fast without Supabase credentials.
+
+Production security requirements:
+
+- Set `NODE_ENV=production`, `SUPABASE_REQUIRED=true`, and `ENFORCE_HTTPS=true`.
+- Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`; never expose service-role keys to the browser.
+- Set `SEED_DEFAULT_USERS=false` and create real users through Supabase/Auth user management.
+- Keep `JWT_SECRET`, `API_KEY`, database passwords, AWS keys, and Supabase keys only in environment variables or a secrets manager.
+- Keep upload size aligned with `UPLOAD_MAX_FILE_SIZE_BYTES` and the private Supabase Storage bucket limit.
+- Run `supabase/schema.sql` so RLS and private storage policies are enabled before exposing the prototype.
+
+Performance notes:
+
+- Dashboard aggregates use a TTL cache controlled by `DASHBOARD_CACHE_TTL_MS`.
+- The dashboard client caches low-churn support calls such as platform status, sources, lineage preview, and report history.
+- Live dashboard events skip expensive chart/table re-renders when the aggregate payload has not changed.
+- Large result surfaces use pagination (`page`, `pageSize`, and cursor support where available).
+- `supabase/schema.sql` includes indexes for common source, discovery, event, upload, and JSON summary query paths.
+
+The Week 4 backend uses Supabase as the central platform when these values are configured:
+
+- **Supabase Auth:** `/api/auth/signup`, `/api/auth/login`, `/api/auth/forgot-password`, `/api/auth/me`, and admin user management use Supabase users and profile roles.
+- **Session handling:** `/api/auth/refresh` refreshes Supabase sessions and `/api/auth/logout` revokes Supabase sessions when possible; the frontend stores tokens in browser local storage for the prototype and clears them on logout.
+- **Supabase PostgreSQL:** source registry rows, discovery/classification runs, catalog snapshots, mapping inventory, remediation tickets, reports, audit logs, alerts, workflow runs, file metadata, user profiles, and platform events are stored in Supabase tables.
+- **Supabase Storage:** uploaded files are written to the private `proteccio-uploads` bucket and linked through `proteccio_uploaded_files`.
+- **Supabase APIs:** the Express backend uses the Supabase SDK with service-role credentials for server-side writes and validates Supabase bearer tokens for API access.
+- **RLS:** `supabase/schema.sql` enables row-level security and role-aware policies for viewers, auditors, analysts, privacy admins, and super admins across application, governance, alerting, reporting, and storage tables.
+
+The frontend uses the permissions returned at login to protect routes and render role-appropriate navigation. Viewers and auditors see read-only analytics/search/reporting surfaces, while security analysts, privacy admins, and super admins can run write workflows according to their role grants.
+
+To exercise the complete prototype flow in one call, use:
+
+```http
+POST /api/workflow/run
+```
+
+This endpoint runs normalization, discovery, classification, mapping, profiling/catalog registration, risk analysis, compliance intelligence, remediation ticket creation, executive reporting, and dashboard refresh for the supplied record batch.
+
 Start development server:
 
 ```bash
 npm run dev
+```
+
+Start the modern React frontend in a second terminal:
+
+```bash
+npm run frontend:dev
+```
+
+The Next.js app runs at `http://localhost:3001` and calls the backend at `http://localhost:3000` by default. To point it at a deployed backend, set:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=https://your-backend.example.com
+```
+
+If you change the frontend origin, also update backend CORS:
+
+```env
+CORS_ALLOWED_ORIGINS=http://localhost:3001,https://your-frontend.example.com
 ```
 
 Default URLs:
@@ -107,6 +197,7 @@ Default URLs:
 - Health: `http://localhost:3000/health`
 - Swagger docs: `http://localhost:3000/docs`
 - Dashboard UI: `http://localhost:3000/dashboard/`
+- Modern React frontend: `http://localhost:3001`
 - OpenAPI JSON: `http://localhost:3000/openapi.json`
 
 ## Scripts
@@ -116,6 +207,7 @@ npm run dev
 npm run typecheck
 npm test
 npm run build
+npm run frontend:build
 npm run start
 npm run docs:generate
 ```
@@ -124,6 +216,9 @@ npm run docs:generate
 - `npm run typecheck` validates TypeScript.
 - `npm test` runs focused Week 3 tests.
 - `npm run build` compiles to `dist`.
+- `npm run frontend:dev` starts the Next.js React frontend.
+- `npm run frontend:build` creates the production frontend build.
+- `npm run frontend:typecheck` validates the frontend TypeScript app.
 - `npm run start` starts the compiled server.
 - `npm run docs:generate` regenerates OpenAPI and Postman artifacts.
 
@@ -191,6 +286,28 @@ Authorization: Bearer <API_KEY>
 JWT is recommended for normal testing.
 
 ## Dashboard Usage
+
+### Modern React Frontend
+
+The Week 4 frontend application lives in `frontend/` and uses Next.js, React, Tailwind CSS, and shadcn-style reusable primitives. It includes:
+
+- `/login` for login, signup, and password reset initiation.
+- `/dashboard` for executive KPIs, risk distribution, and compliance indicators.
+- `/sources` for source onboarding, database/API/S3/file configuration, and status monitoring.
+- `/discovery` for record exploration and the complete discovery-to-reporting workflow.
+- `/mapping` for mapping inventory, source risk heatmap, data flows, and lineage field rows.
+- `/compliance` for a dedicated Compliance Overview Dashboard covering GDPR, DPDP, HIPAA, CCPA, ISO 27001 exposure, controls, and source-level compliance risk.
+- `/governance` for profiling statistics, compliance indicators, remediation actions, and exposed systems.
+- `/search` for advanced dataset/remediation/global filtering with pagination and sorting.
+- `/reports` for report generation, report history, and JSON/CSV/PDF downloads.
+- `/users` for Super Admin user creation and RBAC role management.
+- Shared sidebar navigation, glass-card layout, responsive grid surfaces, and reusable `Button`, `Card`, `Input`, `Select`, `Textarea`, and `Badge` components.
+
+Run it with:
+
+```bash
+npm run frontend:dev
+```
 
 Open:
 
@@ -581,20 +698,25 @@ Expected:
 - Build completes.
 - OpenAPI and Postman artifacts regenerate successfully.
 
-## Deployment Notes
+## Deployment
 
-The repository includes Vercel-compatible setup. For final submission, include:
+Deploy the backend from the repository root using `vercel.json`; it serves the Express API through `api/index.js` after `npm run build`.
 
-- Live deployed Vercel application link
-- GitHub repository link
-- Demo login credentials
-- README documentation
-- API documentation link
-- Demo walkthrough video
+Deploy the frontend as a separate Vercel project with root directory `frontend/`. Set `NEXT_PUBLIC_API_BASE_URL` to the deployed backend URL and add the same frontend URL to backend `CORS_ALLOWED_ORIGINS`.
+
+
 
 Important production note:
 
-This repository version uses in-memory stores for catalog, mapping, audit, remediation, reports, alerts, and users. For multi-instance production deployment, back these stores with PostgreSQL or MongoDB using the existing service/store boundaries.
+The API keeps hot in-memory indexes for fast prototype reads, and writes governance records through to Supabase when configured. For a multi-instance production cluster, make Supabase/PostgreSQL the read source for catalog, mapping, audit, remediation, reports, alerts, and workflow history, or add a shared cache so every instance observes the same state.
+
+### Final Submission Checklist
+
+- Deploy the dashboard/API and set `NODE_ENV=production`, `SUPABASE_REQUIRED=true`, `ENFORCE_HTTPS=true`, `SEED_DEFAULT_USERS=false`, and real Supabase/JWT/API secrets in the host environment.
+- Run `supabase/schema.sql` in the Supabase SQL editor and verify the private `proteccio-uploads` bucket plus RLS policies are enabled.
+- Run `npm run typecheck`, `npm test`, `npm run build`, and `npm run docs:generate`.
+- Include the live Vercel/frontend URL, backend URL, Supabase project-connected demo credentials, GitHub repository URL, Swagger/OpenAPI URL, database schema location (`supabase/schema.sql`), and demo walkthrough video link in the submission notes.
+- Use a super admin to create evaluator accounts through the dashboard User & Role Management panel or `/api/auth/users`.
 
 ## Known Local Testing Tips
 

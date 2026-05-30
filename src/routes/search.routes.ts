@@ -85,6 +85,60 @@ function auditSearch(
 }
 
 /**
+ * GET /api/search/advanced
+ * Unified advanced filter response for dashboard UI.
+ */
+router.get("/search/advanced", (req, res) => {
+  const started = Date.now();
+  const datasetQuery = parseDatasetSearchQuery(req);
+  const remediationQuery = parseRemediationSearchQuery(req);
+  const datasets = searchDatasets(datasetQuery);
+  const remediation = searchRemediation({
+    ...remediationQuery,
+    keyword: remediationQuery.keyword ?? datasetQuery.keyword,
+    datasetId: remediationQuery.datasetId ?? datasetQuery.datasetId,
+    severity: remediationQuery.severity ?? datasetQuery.riskLevel
+  });
+  const globalQuery = parseGlobalSearchQuery(req);
+  const global = globalQuery ? searchGlobal(globalQuery) : undefined;
+
+  auditSearch("api:search/advanced", started, {
+    datasets: datasets.total,
+    remediation: remediation.total,
+    global: global
+      ? {
+          datasets: global.datasets.total,
+          fields: global.fields.total,
+          sources: global.sources.total
+        }
+      : null,
+    page: datasets.page,
+    pageSize: datasets.pageSize,
+    sortBy: datasets.sortBy
+  });
+
+  return res.json({
+    query: {
+      keyword: datasetQuery.keyword,
+      classificationLabels: datasetQuery.classificationLabels,
+      riskLevels: datasetQuery.riskLevels,
+      sourceType: datasetQuery.sourceType,
+      sourceNameContains: datasetQuery.sourceNameContains,
+      complianceRegulation: datasetQuery.complianceRegulation,
+      complianceStatus: datasetQuery.complianceStatus,
+      remediationStatus: remediationQuery.status,
+      sortBy: datasets.sortBy,
+      sortOrder: datasets.sortOrder,
+      page: datasets.page,
+      pageSize: datasets.pageSize
+    },
+    datasets,
+    remediation,
+    global
+  });
+});
+
+/**
  * GET /api/search/datasets
  * Filters: risk, compliance, remediation linkage, multi-label/category (AND/OR), keyword, sort, cursor pagination.
  */

@@ -82,13 +82,47 @@ const EnvSchema = z.object({
   /** Auto-enqueue report generation when catalog size exceeds this threshold. */
   ASYNC_REPORT_THRESHOLD_DATASETS: z.coerce.number().int().positive().max(100_000).default(100),
   REPORT_MAX_COMPLIANCE_ROWS: z.coerce.number().int().positive().max(10_000).default(500),
-  REPORT_MAX_REMEDIATION_TICKETS: z.coerce.number().int().positive().max(10_000).default(500)
+  REPORT_MAX_REMEDIATION_TICKETS: z.coerce.number().int().positive().max(10_000).default(500),
+
+  /** Week 4 platform integration: Supabase project credentials for persistence/realtime handoff. */
+  SUPABASE_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
+  SUPABASE_ANON_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  SUPABASE_SERVICE_ROLE_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  SUPABASE_SOURCE_TABLE: z.string().default("proteccio_sources"),
+  SUPABASE_EVENT_TABLE: z.string().default("proteccio_events"),
+  SUPABASE_PROFILE_TABLE: z.string().default("proteccio_profiles"),
+  SUPABASE_DISCOVERY_TABLE: z.string().default("proteccio_discovery_runs"),
+  SUPABASE_FILE_TABLE: z.string().default("proteccio_uploaded_files"),
+  SUPABASE_CATALOG_TABLE: z.string().default("proteccio_catalog_snapshots"),
+  SUPABASE_MAPPING_TABLE: z.string().default("proteccio_mapping_inventory"),
+  SUPABASE_REMEDIATION_TABLE: z.string().default("proteccio_remediation_tickets"),
+  SUPABASE_REPORT_TABLE: z.string().default("proteccio_reports"),
+  SUPABASE_AUDIT_TABLE: z.string().default("proteccio_audit_logs"),
+  SUPABASE_ALERT_TABLE: z.string().default("proteccio_alerts"),
+  SUPABASE_NOTIFICATION_TABLE: z.string().default("proteccio_notifications"),
+  SUPABASE_WORKFLOW_TABLE: z.string().default("proteccio_workflow_runs"),
+  SUPABASE_STORAGE_BUCKET: z.string().default("proteccio-uploads"),
+  SUPABASE_AUTH_REDIRECT_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),
+  SUPABASE_REQUIRED: z
+    .preprocess((v) => v === true || v === "true" || v === "1" || v === 1, z.boolean())
+    .optional()
+    .default(false),
+  DASHBOARD_REALTIME_POLL_MS: z.coerce.number().int().positive().min(1000).max(60_000).default(5000),
+
+  /** Upload hardening: keep at or below Supabase bucket limit unless the bucket policy is changed. */
+  UPLOAD_MAX_FILE_SIZE_BYTES: z.coerce.number().int().positive().max(52_428_800).default(52_428_800),
+
+  /** Browser origins allowed to call the API from the Next.js frontend. */
+  CORS_ALLOWED_ORIGINS: z.string().default("http://localhost:3001")
 });
 
 const parsed = EnvSchema.parse(process.env);
+const effectiveJwtSecret =
+  parsed.JWT_SECRET ?? (parsed.NODE_ENV === "production" ? undefined : "proteccio_local_jwt_secret_12345");
 
 export const env = {
   ...parsed,
-  /** RBAC + JWT authentication active when `JWT_SECRET` is configured. */
-  RBAC_ENABLED: Boolean(parsed.JWT_SECRET?.trim())
+  JWT_SECRET: effectiveJwtSecret,
+  /** RBAC active when local JWT or Supabase Auth is configured. */
+  RBAC_ENABLED: Boolean(effectiveJwtSecret?.trim() || (parsed.SUPABASE_URL && parsed.SUPABASE_ANON_KEY))
 };

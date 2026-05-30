@@ -75,6 +75,128 @@
           }
         },
         {
+          "name": "POST signup",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "signup"
+              ]
+            },
+            "description": "No auth. Creates a viewer account.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"new.user@example.com\",\n  \"password\": \"Viewer123!\",\n  \"displayName\": \"New User\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST forgot password",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "forgot-password"
+              ]
+            },
+            "description": "No auth. Starts Supabase reset when configured.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"viewer@example.com\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST refresh",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "No auth. Supabase sessions only.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"replace-with-supabase-refresh-token\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST logout",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{apiKey}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
           "name": "GET me",
           "request": {
             "auth": {
@@ -196,6 +318,221 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"newuser@local\",\n  \"password\": \"ChangeMe1!\",\n  \"displayName\": \"New User\",\n  \"role\": \"viewer\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Platform",
+      "item": [
+        {
+          "name": "GET platform status",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{apiKey}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/platform/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "platform",
+                "status"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "GET realtime dashboard stream",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{apiKey}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/realtime/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "realtime",
+                "dashboard"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sources",
+      "item": [
+        {
+          "name": "GET sources",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{apiKey}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sources"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "POST register Postgres source",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{apiKey}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sources"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"customer-production-db\",\n  \"type\": \"postgres\",\n  \"owner\": \"privacy-team@example.com\",\n  \"environment\": \"production\",\n  \"connection\": {\n    \"host\": \"db.internal\",\n    \"port\": 5432,\n    \"database\": \"customers\",\n    \"authMode\": \"secret_ref\",\n    \"secretRef\": \"supabase-vault:prod/customer-db\"\n  },\n  \"tags\": [\n    \"production\",\n    \"customer-data\"\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "POST check source",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{apiKey}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sources/00000000-0000-0000-0000-000000000000/check",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sources",
+                "00000000-0000-0000-0000-000000000000",
+                "check"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ok\": true\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workflow",
+      "item": [
+        {
+          "name": "POST run end-to-end workflow",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{apiKey}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/workflow/run",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "workflow",
+                "run"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"records\": [\n    {\n      \"email\": \"riya@example.com\",\n      \"aadhaar\": \"2345 6789 0123\",\n      \"city\": \"Pune\"\n    },\n    {\n      \"email\": \"alex@example.com\",\n      \"pan\": \"ABCDE1234F\",\n      \"diagnosis\": \"diabetes\"\n    }\n  ],\n  \"sourceType\": \"file\",\n  \"sourceName\": \"dashboard-workbench\",\n  \"entityName\": \"sample-records.json\",\n  \"createRemediation\": true,\n  \"reportFormat\": \"json\"\n}"
             }
           }
         }

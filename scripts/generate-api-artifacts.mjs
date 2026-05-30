@@ -10,6 +10,10 @@ fs.mkdirSync(openapiDir, { recursive: true });
 const tags = [
   { name: "Health", description: "Liveness probe (no API key)." },
   { name: "Auth", description: "JWT login, current principal, roles, and user administration (RBAC)." },
+  { name: "Platform", description: "Week 4 Supabase/platform readiness status." },
+  { name: "Sources", description: "Source onboarding, configuration, and status monitoring." },
+  { name: "Workflow", description: "End-to-end Week 4 data flow orchestration." },
+  { name: "Realtime", description: "Live dashboard update stream." },
   { name: "Ingestion", description: "Connectors, upload, ingest previews/full, history." },
   { name: "Discovery", description: "Sensitive-data discovery scans." },
   { name: "Classification", description: "Privacy labels from discovery results." },
@@ -343,6 +347,65 @@ const paths = {
       }
     }
   },
+  "/api/auth/signup": {
+    post: {
+      ...op("Auth", "Self-service signup; new users start as viewers"),
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["email", "password", "displayName"],
+              properties: {
+                email: { type: "string", example: "new.user@example.com" },
+                password: { type: "string", example: "Viewer123!" },
+                displayName: { type: "string", example: "New User" }
+              }
+            }
+          }
+        }
+      },
+      responses: { "201": { description: "Created and signed in", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/auth/forgot-password": {
+    post: {
+      ...op("Auth", "Start password reset workflow"),
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: { type: "object", required: ["email"], properties: { email: { type: "string" } } }
+          }
+        }
+      },
+      responses: { "202": { description: "Accepted", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/auth/refresh": {
+    post: {
+      ...op("Auth", "Refresh Supabase session"),
+      security: [],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: { type: "object", required: ["refreshToken"], properties: { refreshToken: { type: "string" } } }
+          }
+        }
+      },
+      responses: { "200": { description: "Refreshed session", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/auth/logout": {
+    post: {
+      ...op("Auth", "Logout and revoke Supabase session when available"),
+      responses: { "200": { description: "Logged out", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
   "/api/auth/me": {
     get: {
       ...op("Auth", "Current authenticated principal and permissions"),
@@ -383,6 +446,88 @@ const paths = {
         }
       },
       responses: { "201": { description: "Created", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/platform/status": {
+    get: {
+      ...op("Platform", "Supabase/platform configuration and readiness"),
+      responses: { "200": { description: "Platform status", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/sources": {
+    get: {
+      ...op("Sources", "List managed sources"),
+      responses: { "200": { description: "Sources", content: { "application/json": { schema: { type: "object" } } } } }
+    },
+    post: {
+      ...op("Sources", "Register a source"),
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["name", "type"],
+              properties: {
+                name: { type: "string", example: "customer-production-db" },
+                type: { type: "string", enum: ["postgres", "mysql", "mongodb", "api", "s3", "file"] },
+                owner: { type: "string" },
+                environment: { type: "string", enum: ["development", "staging", "production", "sandbox"] },
+                connection: { type: "object", additionalProperties: true },
+                tags: { type: "array", items: { type: "string" } }
+              }
+            }
+          }
+        }
+      },
+      responses: { "201": { description: "Created", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/sources/{id}": {
+    patch: {
+      ...op("Sources", "Update source configuration or status"),
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+      requestBody: { required: true, content: { "application/json": { schema: { type: "object", additionalProperties: true } } } },
+      responses: { "200": { description: "Updated", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/sources/{id}/check": {
+    post: {
+      ...op("Sources", "Record source connectivity check result"),
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+      requestBody: { content: { "application/json": { schema: { type: "object", properties: { ok: { type: "boolean" } } } } } },
+      responses: { "200": { description: "Checked", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/workflow/run": {
+    post: {
+      ...op("Workflow", "Run ingestion to reporting end-to-end workflow"),
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["records"],
+              properties: {
+                records: { type: "array", items: { type: "object", additionalProperties: true } },
+                sourceType: { type: "string", enum: ["database", "cloud", "file", "api"] },
+                sourceName: { type: "string" },
+                entityName: { type: "string" },
+                createRemediation: { type: "boolean" },
+                reportFormat: { type: "string", enum: ["json", "csv", "pdf"] }
+              }
+            }
+          }
+        }
+      },
+      responses: { "201": { description: "Workflow result", content: { "application/json": { schema: { type: "object" } } } } }
+    }
+  },
+  "/api/realtime/dashboard": {
+    get: {
+      ...op("Realtime", "Server-sent live dashboard updates"),
+      responses: { "200": { description: "text/event-stream dashboard events" } }
     }
   },
   "/api/db/postgres/health": {
@@ -1490,7 +1635,7 @@ const openapi = {
     title: "Data Ingestion & Privacy Intelligence API",
     version: "1.0.0",
     description:
-      "Proteccio Discover backend covering Week 1 ingestion, Week 2 discovery/classification/mapping/profiling, and Week 3 governance/compliance intelligence: privacy risk, compliance controls, remediation workflows, dashboards, reporting, RBAC, alerting, and global search.\n\n**Auth:** When `JWT_SECRET` is set, use `POST /api/auth/login` and send `Authorization: Bearer <JWT>`. When only `API_KEY` is set, send `Authorization: Bearer <API_KEY>` or `X-API-Key: <API_KEY>` on `/api/*` except `/health` and documentation routes.\n\n**Docs UI:** `GET /docs` (Swagger UI). **Raw spec:** `GET /openapi.json`."
+      "Proteccio Discover backend covering Week 1 ingestion, Week 2 discovery/classification/mapping/profiling, Week 3 governance/compliance intelligence, and Week 4 source onboarding, Supabase-backed persistence, realtime dashboard updates, end-to-end workflow orchestration, reporting, RBAC, alerting, and global search.\n\n**Auth:** When `JWT_SECRET` or Supabase Auth is configured, use `POST /api/auth/login` and send `Authorization: Bearer <token>`. When only `API_KEY` is set, send `Authorization: Bearer <API_KEY>` or `X-API-Key: <API_KEY>` on `/api/*` except `/health` and documentation routes.\n\n**Docs UI:** `GET /docs` (Swagger UI). **Raw spec:** `GET /openapi.json`."
   },
   servers: [{ url: "{baseUrl}", variables: { baseUrl: { default: "http://localhost:3000" } } }],
   tags,
@@ -1557,6 +1702,18 @@ const collection = {
           email: "viewer@local",
           password: "Viewer1!"
         }, "No auth. Returns JWT.", { noAuth: true }),
+        pmItem("POST signup", "POST", "/api/auth/signup", {
+          email: "new.user@example.com",
+          password: "Viewer123!",
+          displayName: "New User"
+        }, "No auth. Creates a viewer account.", { noAuth: true }),
+        pmItem("POST forgot password", "POST", "/api/auth/forgot-password", {
+          email: "viewer@example.com"
+        }, "No auth. Starts Supabase reset when configured.", { noAuth: true }),
+        pmItem("POST refresh", "POST", "/api/auth/refresh", {
+          refreshToken: "replace-with-supabase-refresh-token"
+        }, "No auth. Supabase sessions only.", { noAuth: true }),
+        pmItem("POST logout", "POST", "/api/auth/logout"),
         pmItem("GET me", "GET", "/api/auth/me"),
         pmItem("GET roles", "GET", "/api/auth/roles"),
         pmItem("GET users", "GET", "/api/auth/users"),
@@ -1565,6 +1722,50 @@ const collection = {
           password: "ChangeMe1!",
           displayName: "New User",
           role: "viewer"
+        })
+      ]
+    },
+    {
+      name: "Platform",
+      item: [
+        pmItem("GET platform status", "GET", "/api/platform/status"),
+        pmItem("GET realtime dashboard stream", "GET", "/api/realtime/dashboard")
+      ]
+    },
+    {
+      name: "Sources",
+      item: [
+        pmItem("GET sources", "GET", "/api/sources"),
+        pmItem("POST register Postgres source", "POST", "/api/sources", {
+          name: "customer-production-db",
+          type: "postgres",
+          owner: "privacy-team@example.com",
+          environment: "production",
+          connection: {
+            host: "db.internal",
+            port: 5432,
+            database: "customers",
+            authMode: "secret_ref",
+            secretRef: "supabase-vault:prod/customer-db"
+          },
+          tags: ["production", "customer-data"]
+        }),
+        pmItem("POST check source", "POST", "/api/sources/00000000-0000-0000-0000-000000000000/check", { ok: true })
+      ]
+    },
+    {
+      name: "Workflow",
+      item: [
+        pmItem("POST run end-to-end workflow", "POST", "/api/workflow/run", {
+          records: [
+            { email: "riya@example.com", aadhaar: "2345 6789 0123", city: "Pune" },
+            { email: "alex@example.com", pan: "ABCDE1234F", diagnosis: "diabetes" }
+          ],
+          sourceType: "file",
+          sourceName: "dashboard-workbench",
+          entityName: "sample-records.json",
+          createRemediation: true,
+          reportFormat: "json"
         })
       ]
     },

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { ClassificationScanResult } from "../classification/types";
 import type { DiscoveryScanResult } from "../discovery";
+import { persistMappingInventory } from "../supabase/governance-persistence";
 import type { DataFlow, DataFlowKind, Dataset, MappedField, MappingInventoryExport, SourceSystem } from "./types";
 import {
   buildDatasetLineageView,
@@ -29,12 +30,14 @@ export class MappingRegistry {
     for (const f of fields) {
       this.fields.set(f.id, f);
     }
+    this.persist();
     return { system, dataset, fields };
   }
 
   registerDatasetManual(dataset: Dataset, system: SourceSystem): void {
     this.systems.set(system.id, system);
     this.datasets.set(dataset.id, dataset);
+    this.persist();
   }
 
   addFlow(input: {
@@ -60,6 +63,7 @@ export class MappingRegistry {
     }
     const flow: DataFlow = { id: randomUUID(), ...input };
     this.flows.set(flow.id, flow);
+    this.persist();
     return flow;
   }
 
@@ -117,11 +121,27 @@ export class MappingRegistry {
     };
   }
 
+  restoreInventory(inventory: Pick<MappingInventoryExport, "systems" | "datasets" | "fields" | "flows">): void {
+    this.systems.clear();
+    this.datasets.clear();
+    this.fields.clear();
+    this.flows.clear();
+    for (const system of inventory.systems) this.systems.set(system.id, system);
+    for (const dataset of inventory.datasets) this.datasets.set(dataset.id, dataset);
+    for (const field of inventory.fields) this.fields.set(field.id, field);
+    for (const flow of inventory.flows) this.flows.set(flow.id, flow);
+  }
+
   clear(): void {
     this.systems.clear();
     this.datasets.clear();
     this.fields.clear();
     this.flows.clear();
+    this.persist();
+  }
+
+  private persist(): void {
+    void persistMappingInventory(this.exportInventory());
   }
 }
 

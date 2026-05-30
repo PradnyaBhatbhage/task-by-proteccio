@@ -14,12 +14,16 @@ const redact: string[] = [
   "API_KEY",
   "JWT_SECRET",
   "AWS_SECRET_ACCESS_KEY",
+  "SUPABASE_ANON_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
   "MYSQL_PASSWORD",
   "POSTGRES_PASSWORD",
+  "MONGODB_URI",
   "*.password",
   "*.token",
   "*.secret",
-  "*.apiKey"
+  "*.apiKey",
+  "*.secretRef"
 ];
 
 const level = process.env.NODE_ENV === "production" ? "info" : "debug";

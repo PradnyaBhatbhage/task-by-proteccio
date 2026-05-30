@@ -13,11 +13,26 @@ export interface RouteRule {
 export const ROUTE_RULES: RouteRule[] = [
   // Auth (login is public; user admin requires users:manage)
   { methods: ["POST"], pattern: /^\/api\/auth\/login$/, permission: "dashboard:read" },
+  { methods: ["POST"], pattern: /^\/api\/auth\/signup$/, permission: "dashboard:read" },
+  { methods: ["POST"], pattern: /^\/api\/auth\/forgot-password$/, permission: "dashboard:read" },
+  { methods: ["POST"], pattern: /^\/api\/auth\/refresh$/, permission: "dashboard:read" },
+  { methods: ["POST"], pattern: /^\/api\/auth\/logout$/, permission: "dashboard:read" },
   { methods: ["GET"], pattern: /^\/api\/auth\/me$/, permission: "dashboard:read" },
   { methods: ["GET"], pattern: /^\/api\/auth\/roles$/, permission: "dashboard:read" },
   { methods: ["POST"], pattern: /^\/api\/auth\/users$/, permission: "users:manage" },
   { methods: ["GET"], pattern: /^\/api\/auth\/users$/, permission: "users:manage" },
   { methods: ["PATCH"], pattern: /^\/api\/auth\/users\/[^/]+$/, permission: "users:manage" },
+
+  // Platform shell and realtime dashboard stream
+  { methods: ["GET"], pattern: /^\/api\/platform/, permission: "dashboard:read" },
+  { methods: ["GET"], pattern: /^\/api\/realtime\/dashboard$/, permission: "dashboard:read" },
+
+  // End-to-end prototype workflow
+  { methods: ["POST"], pattern: /^\/api\/workflow\/run$/, permission: "workflow:execute" },
+
+  // Source onboarding and monitoring
+  { methods: ["GET"], pattern: /^\/api\/sources/, permission: "ingestion:read" },
+  { methods: ["POST", "PATCH"], pattern: /^\/api\/sources/, permission: "ingestion:write" },
 
   // Ingestion
   { methods: ["GET"], pattern: /^\/api\/(db|s3|history)/, permission: "ingestion:read" },
@@ -60,7 +75,12 @@ export const ROUTE_RULES: RouteRule[] = [
 ];
 
 /** Paths that skip RBAC permission checks (still require auth when RBAC is on). */
-export const AUTH_PUBLIC_PATHS = new Set(["/api/auth/login"]);
+export const AUTH_PUBLIC_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/signup",
+  "/api/auth/forgot-password",
+  "/api/auth/refresh"
+]);
 
 export function resolveRequiredPermission(method: string, apiPath: string): Permission | undefined {
   const upper = method.toUpperCase();

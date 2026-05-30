@@ -1,4 +1,5 @@
 import { Router } from "express";
+import path from "node:path";
 import { PostgresConnector } from "../connectors/postgres.connector";
 import { S3Connector } from "../connectors/s3.connector";
 import { ingestFromApi } from "../connectors/api.connector";
@@ -14,6 +15,8 @@ import { assertSafeIdentifier } from "../utils/identifiers";
 import { scanRecords } from "../discovery";
 import { maskRecordsForPreview } from "../discovery/mask";
 import { clampDbPreviewLimit, clampIngestMaxRecords, clampPreviewRows } from "../utils/security";
+import { getActorId } from "../middleware/authenticate";
+import { uploadFileToSupabase } from "../supabase/persistence";
 
 function includeDiscoveryFromBody(body: unknown): boolean {
   if (!body || typeof body !== "object") return false;
@@ -30,6 +33,11 @@ function previewSample(
 }
 
 const router = Router();
+
+function safeUploadName(name: string): string {
+  const base = path.basename(name).replace(/[^\w.\- ]+/g, "_").slice(0, 180);
+  return base || "uploaded-file";
+}
 
 router.get("/db/postgres/health", async (_req, res, next) => {
   try {
@@ -160,12 +168,20 @@ router.post("/upload", uploadMiddleware.single("file"), async (req, res, next) =
     const metadata = buildMetadata({
       sourceName: "internal-upload",
       sourceType: "file",
-      entityName: req.file.originalname,
+      entityName: safeUploadName(req.file.originalname),
       fileType: req.file.mimetype,
       fileSizeBytes: req.file.size,
       createdDate: new Date()
     });
-    res.status(201).json({ fileId: req.file.filename, metadata });
+    const supabase = await uploadFileToSupabase({
+      filePath: req.file.path,
+      originalName: safeUploadName(req.file.originalname),
+      mimeType: req.file.mimetype,
+      sizeBytes: req.file.size,
+      actorId: getActorId(req),
+      metadata: metadata as unknown as Record<string, unknown>
+    });
+    res.status(201).json({ fileId: req.file.filename, metadata, supabase });
   } catch (err) {
     next(err);
   }
@@ -218,14 +234,14 @@ router.post("/ingest/file/preview", uploadMiddleware.single("file"), async (req,
 
     const parsed = await parseUploadedFilePreview({
       filePath: req.file.path,
-      originalName: req.file.originalname,
+      originalName: safeUploadName(req.file.originalname),
       maxRecords
     });
     const normalized = normalizeRecords(parsed.records, { schemaMapping });
     const metadata = buildMetadata({
       sourceName: "internal-upload",
       sourceType: "file",
-      entityName: req.file.originalname,
+      entityName: safeUploadName(req.file.originalname),
       fileType: req.file.mimetype,
       fileSizeBytes: req.file.size,
       recordCount: normalized.length,
@@ -240,11 +256,19 @@ router.post("/ingest/file/preview", uploadMiddleware.single("file"), async (req,
       metadata,
       preview: previewSample(normalized, 20)
     };
+    out.supabase = await uploadFileToSupabase({
+      filePath: req.file.path,
+      originalName: safeUploadName(req.file.originalname),
+      mimeType: req.file.mimetype,
+      sizeBytes: req.file.size,
+      actorId: getActorId(req),
+      metadata: metadata as unknown as Record<string, unknown>
+    });
     if (includeDiscoveryFromBody(body)) {
       out.discovery = scanRecords(normalized, {
         sourceType: "file",
         sourceName: "internal-upload",
-        entityName: req.file.originalname
+        entityName: safeUploadName(req.file.originalname)
       });
     }
     res.json(out);

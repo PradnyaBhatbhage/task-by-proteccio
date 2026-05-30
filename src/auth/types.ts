@@ -39,7 +39,8 @@ export type Permission =
   | "reporting:write"
   | "alerts:read"
   | "alerts:write"
-  | "users:manage";
+  | "users:manage"
+  | "workflow:execute";
 
 export interface AuthUser {
   id: string;
@@ -58,7 +59,7 @@ export interface AuthPrincipal {
   email: string;
   displayName: string;
   role: Role;
-  authMethod: "jwt" | "api_key";
+  authMethod: "jwt" | "api_key" | "supabase";
 }
 
 export interface JwtClaims {

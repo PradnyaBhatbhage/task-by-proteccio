@@ -1,5 +1,6 @@
 /** Supported audit-ready report templates. */
 export type ReportType =
+  | "discovery"
   | "privacy_risk"
   | "compliance"
   | "source_discovery"
@@ -71,6 +72,11 @@ export interface ReportTypeInfo {
 }
 
 export const REPORT_TYPES: ReportTypeInfo[] = [
+  {
+    id: "discovery",
+    title: "Discovery Report",
+    description: "Sensitive data discovery totals, category findings, dataset detections, and mapped discovery rows."
+  },
   {
     id: "privacy_risk",
     title: "Privacy Risk Report",

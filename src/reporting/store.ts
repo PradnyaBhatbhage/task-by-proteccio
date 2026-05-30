@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ExportFormat, GenerateReportInput, ReportQuery, ReportRecord, ReportContent, ReportType } from "./types";
 import { buildReportContent } from "./builders";
+import { persistReportRecord } from "../supabase/governance-persistence";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -69,7 +70,16 @@ export class ReportStore {
     this.byId.set(id, record);
     this.indexAdd(record);
     this.trim();
+    void persistReportRecord(record);
     return record;
+  }
+
+  restore(record: ReportRecord): void {
+    const prev = this.byId.get(record.id);
+    if (prev) this.indexRemove(prev);
+    this.byId.set(record.id, record);
+    this.indexAdd(record);
+    this.trim();
   }
 
   get(id: string): ReportRecord | undefined {

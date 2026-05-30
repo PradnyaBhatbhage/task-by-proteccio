@@ -36,6 +36,7 @@ function parseFormat(raw: unknown): ExportFormat | undefined {
 
 const GenerateBodySchema = z.object({
   reportType: z.enum([
+    "discovery",
     "privacy_risk",
     "compliance",
     "source_discovery",

@@ -10,6 +10,8 @@ import { classifyDiscoveryScan } from "../classification";
 import { auditTrail } from "../audit";
 import { evaluateCriticalSensitiveDiscovery, evaluateFailedScan } from "../alerting";
 import { MAX_DISCOVERY_RECORDS } from "../utils/security";
+import { getActorId } from "../middleware/authenticate";
+import { persistDiscoveryRun } from "../supabase/persistence";
 
 const router = Router();
 
@@ -107,6 +109,11 @@ router.post("/discovery/scan", async (req, res, next) => {
       fireDiscoveryAlerts(result);
       if (classifyRequested) {
         const classification = classifyDiscoveryScan(result);
+        const supabase = await persistDiscoveryRun({
+          discovery: result,
+          classification,
+          actorId: getActorId(req)
+        });
         auditTrail.append({
           source: "api:discovery/scan",
           action: "discovery_scan",
@@ -119,8 +126,9 @@ router.post("/discovery/scan", async (req, res, next) => {
             sourceType: trace.sourceType
           }
         });
-        return res.json({ discovery: result, classification });
+        return res.json({ discovery: result, classification, supabase });
       }
+      const supabase = await persistDiscoveryRun({ discovery: result, actorId: getActorId(req) });
       auditTrail.append({
         source: "api:discovery/scan",
         action: "discovery_scan",
@@ -133,13 +141,18 @@ router.post("/discovery/scan", async (req, res, next) => {
           sourceType: trace.sourceType
         }
       });
-      return res.json(result);
+      return res.json({ ...result, supabase });
     }
 
     const result = scanRecords(normalizedRecords, trace, options);
     fireDiscoveryAlerts(result);
     if (classifyRequested) {
       const classification = classifyDiscoveryScan(result);
+      const supabase = await persistDiscoveryRun({
+        discovery: result,
+        classification,
+        actorId: getActorId(req)
+      });
       auditTrail.append({
         source: "api:discovery/scan",
         action: "discovery_scan",
@@ -152,8 +165,9 @@ router.post("/discovery/scan", async (req, res, next) => {
           sourceType: trace.sourceType
         }
       });
-      return res.json({ discovery: result, classification });
+      return res.json({ discovery: result, classification, supabase });
     }
+    const supabase = await persistDiscoveryRun({ discovery: result, actorId: getActorId(req) });
     auditTrail.append({
       source: "api:discovery/scan",
       action: "discovery_scan",
@@ -166,7 +180,7 @@ router.post("/discovery/scan", async (req, res, next) => {
         sourceType: trace.sourceType
       }
     });
-    return res.json(result);
+    return res.json({ ...result, supabase });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown";
     evaluateFailedScan({

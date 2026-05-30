@@ -10,6 +10,7 @@ import type {
 } from "./types";
 import type { RiskLevel } from "../risk/types";
 import { invalidateDashboardCache } from "../services/dashboard-analytics-cache";
+import { persistRemediationTicket } from "../supabase/governance-persistence";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -60,6 +61,14 @@ export class RemediationStore {
     invalidateDashboardCache();
   }
 
+  restore(ticket: RemediationTicket): void {
+    const prev = this.byId.get(ticket.id);
+    if (prev) this.indexRemove(prev);
+    this.byId.set(ticket.id, ticket);
+    this.indexAdd(ticket);
+    this.invalidateCaches();
+  }
+
   create(input: CreateRemediationInput): RemediationTicket {
     const id = randomUUID();
     const ts = nowIso();
@@ -99,6 +108,7 @@ export class RemediationStore {
     this.byId.set(id, ticket);
     this.indexAdd(ticket);
     this.invalidateCaches();
+    void persistRemediationTicket(ticket);
     return ticket;
   }
 
@@ -181,6 +191,7 @@ export class RemediationStore {
     this.byId.set(id, existing);
     this.indexAdd(existing);
     this.invalidateCaches();
+    void persistRemediationTicket(existing);
     return existing;
   }
 

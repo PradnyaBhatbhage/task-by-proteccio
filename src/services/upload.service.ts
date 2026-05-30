@@ -2,8 +2,9 @@ import multer from "multer";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import { env } from "../config/env";
 
-const MAX_SIZE_BYTES = 500 * 1024 * 1024;
+const MALWARE_SCAN_SAMPLE_BYTES = 2 * 1024 * 1024;
 const allowedExtensions = new Set([".csv", ".json", ".txt", ".xlsx", ".pdf", ".pst", ".ost"]);
 const riskyInnerExtensions = new Set([
   ".exe",
@@ -63,7 +64,15 @@ function fileFilter(_req: Express.Request, file: Express.Multer.File, cb: multer
 }
 
 export async function runBasicMalwareScan(filePath: string): Promise<void> {
-  const sample = await fs.readFile(filePath);
+  const handle = await fs.open(filePath, "r");
+  let sample: Buffer;
+  try {
+    const buffer = Buffer.alloc(MALWARE_SCAN_SAMPLE_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, MALWARE_SCAN_SAMPLE_BYTES, 0);
+    sample = buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
   const content = sample.toString("latin1");
 
   if (content.includes("X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*")) {
@@ -88,6 +97,7 @@ export const uploadMiddleware = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: MAX_SIZE_BYTES
+    fileSize: env.UPLOAD_MAX_FILE_SIZE_BYTES,
+    files: 1
   }
 });

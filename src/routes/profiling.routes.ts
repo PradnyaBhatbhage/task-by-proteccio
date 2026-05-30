@@ -6,6 +6,8 @@ import { buildProfilingReport } from "../profiling";
 import { assessRisk, mergeExposureHintsForDiscovery, type RiskExposureHints } from "../risk";
 import { looksLikeClassificationScanResult, looksLikeDiscoveryScanResult } from "../utils/scan-payload";
 import { evaluatePostScanAlerts } from "../alerting";
+import { getActorId } from "../middleware/authenticate";
+import { persistDiscoveryRun } from "../supabase/persistence";
 
 const router = Router();
 
@@ -60,7 +62,7 @@ const ProfilingBodySchema = z.object({
  * POST /api/profiling/profile
  * Computes profiling intelligence + risk scoring from discovery (and optional classification / record batch).
  */
-router.post("/profiling/profile", (req, res, next) => {
+router.post("/profiling/profile", async (req, res, next) => {
   const started = Date.now();
   const parsed = ProfilingBodySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -127,7 +129,16 @@ router.post("/profiling/profile", (req, res, next) => {
       }
     });
 
-    return res.json({ profile, risk, catalog: catalogSnapshot });
+    const supabase = catalogSnapshot
+      ? await persistDiscoveryRun({
+          discovery: body.discovery,
+          classification,
+          catalogSnapshot,
+          actorId: getActorId(req)
+        })
+      : undefined;
+
+    return res.json({ profile, risk, catalog: catalogSnapshot, supabase });
   } catch (err) {
     auditTrail.append({
       source: "api:profiling/profile",
@@ -201,6 +212,13 @@ router.post("/catalog/register", (req, res) => {
       sensitiveRecordCount: snap.sensitiveRecordCount
     }
   });
+
+  void persistDiscoveryRun({
+    discovery: body.discovery,
+    classification,
+    catalogSnapshot: snap,
+    actorId: getActorId(req)
+  }).catch(() => undefined);
 
   return res.status(201).json({ snapshot: snap });
 });

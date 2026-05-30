@@ -18,11 +18,16 @@ import dashboardRoutes from "./routes/dashboard.routes";
 import auditRoutes from "./routes/audit.routes";
 import reportingRoutes from "./routes/reporting.routes";
 import alertingRoutes from "./routes/alerting.routes";
+import sourcesRoutes from "./routes/sources.routes";
+import platformRoutes from "./routes/platform.routes";
+import realtimeRoutes from "./routes/realtime.routes";
+import workflowRoutes from "./routes/workflow.routes";
 import { logger } from "./utils/logger";
 import { enforceHttps } from "./middleware/https";
 import { authenticate, legacyApiKeyGate } from "./middleware/authenticate";
 import { authorize } from "./middleware/authorize";
 import authRoutes from "./routes/auth.routes";
+import { hydratePlatformStoresFromSupabase } from "./supabase/hydrate";
 
 const openApiPath = path.join(process.cwd(), "openapi", "openapi.json");
 let openApiSpec: Record<string, unknown>;
@@ -37,12 +42,41 @@ try {
 }
 
 const app = express();
+void hydratePlatformStoresFromSupabase();
 app.use(
   helmet({
-    contentSecurityPolicy: false
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'none'"]
+      }
+    },
+    referrerPolicy: { policy: "no-referrer" }
   })
 );
 app.use(express.json({ limit: "5mb" }));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = env.CORS_ALLOWED_ORIGINS.split(",").map((item) => item.trim()).filter(Boolean);
+  if (origin && (allowedOrigins.includes("*") || allowedOrigins.includes(origin))) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
+  }
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
 app.use(pinoHttp({ logger }));
 app.use("/api", apiRateLimiter);
 
@@ -96,6 +130,10 @@ app.use("/api", authenticate);
 app.use("/api", authorize);
 
 app.use("/api", authRoutes);
+app.use("/api", platformRoutes);
+app.use("/api", realtimeRoutes);
+app.use("/api", sourcesRoutes);
+app.use("/api", workflowRoutes);
 app.use("/api", ingestionRoutes);
 app.use("/api", discoveryRoutes);
 app.use("/api", classificationRoutes);

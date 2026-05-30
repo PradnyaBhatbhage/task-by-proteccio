@@ -720,25 +720,3 @@ Expected:
 Deploy the backend from the repository root using `vercel.json`; it serves the Express API through `api/index.js` after `npm run build`.
 
 Deploy the frontend as a separate Vercel project with root directory `frontend/`. Set `NEXT_PUBLIC_API_BASE_URL` to the deployed backend URL and add the same frontend URL to backend `CORS_ALLOWED_ORIGINS`.
-
-
-
-Important production note:
-
-The API keeps hot in-memory indexes for fast prototype reads, and writes governance records through to Supabase when configured. For a multi-instance production cluster, make Supabase/PostgreSQL the read source for catalog, mapping, audit, remediation, reports, alerts, and workflow history, or add a shared cache so every instance observes the same state.
-
-### Final Submission Checklist
-
-- Deploy the dashboard/API and set `NODE_ENV=production`, `SUPABASE_REQUIRED=true`, `ENFORCE_HTTPS=true`, `SEED_DEFAULT_USERS=false`, and real Supabase/JWT/API secrets in the host environment.
-- Run `supabase/schema.sql` in the Supabase SQL editor and verify the private `proteccio-uploads` bucket plus RLS policies are enabled.
-- Run `npm run typecheck`, `npm test`, `npm run build`, and `npm run docs:generate`.
-- Include the live Vercel/frontend URL, backend URL, Supabase project-connected demo credentials, GitHub repository URL, Swagger/OpenAPI URL, database schema location (`supabase/schema.sql`), and demo walkthrough video link in the submission notes.
-- Use a super admin to create evaluator accounts through the dashboard User & Role Management panel or `/api/auth/users`.
-
-## Known Local Testing Tips
-
-- If `/api/auth/login` says RBAC is disabled, set `JWT_SECRET` in `.env` and restart the server.
-- If `/api/auth/me` or dashboard APIs return unauthorized, login first and send `Authorization: Bearer <token>`.
-- If the browser dashboard is empty, register a dataset first with `POST /api/catalog/register`.
-- If data disappears after restart, that is expected for the current in-memory MVP store.
-- If Postman uses `{{baseUrl}}`, set it to `http://localhost:3000`.

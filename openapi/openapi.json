@@ -142,7 +142,7 @@
                 "properties": {
                   "email": {
                     "type": "string",
-                    "example": "superadmin@proteccio.app"
+                    "example": "superadmin@discover.app"
                   },
                   "password": {
                     "type": "string",

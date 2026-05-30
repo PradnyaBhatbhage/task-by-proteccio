@@ -236,7 +236,7 @@ Body:
 
 ```json
 {
-  "email": "superadmin@proteccio.app",
+  "email": "superadmin@discover.app",
   "password": "SuperAdmin1!"
 }
 ```
@@ -290,7 +290,7 @@ JWT is recommended for normal testing.
 Use this Supabase-backed evaluator account for the deployed frontend and backend dashboard:
 
 ```text
-Email: superadmin@proteccio.app
+Email: superadmin@discover.app
 Password: SuperAdmin1!
 Role: super_admin
 ```
@@ -328,7 +328,7 @@ http://localhost:3000/dashboard/
 Login in the dashboard with:
 
 ```text
-superadmin@proteccio.app
+superadmin@discover.app
 SuperAdmin1!
 ```
 
@@ -576,7 +576,7 @@ When email is not configured and in-app notifications are enabled, default alert
 
 ## Sample Dataset Registration
 
-Use this to populate dashboard data quickly after login with `superadmin@proteccio.app` in production or `privacy@local` in local seeded demo mode.
+Use this to populate dashboard data quickly after login with `superadmin@discover.app` in production or `privacy@local` in local seeded demo mode.
 
 ```http
 POST /api/catalog/register

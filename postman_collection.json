@@ -70,7 +70,7 @@
             "description": "No auth. Returns JWT.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"superadmin@proteccio.app\",\n  \"password\": \"SuperAdmin1!\"\n}"
+              "raw": "{\n  \"email\": \"superadmin@discover.app\",\n  \"password\": \"SuperAdmin1!\"\n}"
             }
           }
         },
